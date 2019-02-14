@@ -1,0 +1,543 @@
+
+ brew cask install virtualbox
+
+kubernetes is platform to run distributed system. it is container orchestrator.
+you have bunch of containers and machines and want to figure out what runs where.
+most user are looking at two things
+api driven way to automate deployment across bunch of nodes. that realy enable more efficient workflows.
+its really about getting more things done faster
+other goal is efficiency
+i have set of resource hardware and we want to pack more into it.
+
+kubernetes provides API driven and container centric system.
+placing of containers on nodes
+recovering instances of application if they crash or hang.
+provides monitoring logging and health checks
+it enables service discovery, ability of containers to find each other.
+it supports diverse variety of workloads stateless, statefull, and data processing workloads.
+
+It design and development is heavily influnced by Google.
+Lot of folks who started kubernetes had worked on google's Borg project, which was its container orchestratiion
+platform, which google was using for more than a decade to deploy its container workloads.
+everything in google runs in containers and it is said that google deploys billions of containers per week.
+this is called google scale.
+
+kubernetes is open source project.
+it is one of the very popular/active projects, with nearly 2000 contributors.
+it is written in Go 
+
+Google donated kubernetes to cloud native computing foundation in 2014, then on it has been a community 
+driven project.
+CNCF is bringing in an ecosystem of components and tools to make it easier to deploy, scale and 
+manage applications on kubernetes.
+
+kubernetes componentes
+It consists of master node where control plane components are going to run and worker nodes where application
+are going to run.
+
+in simple terms kubernetes is really a data base fronted by api and with bunch of controllers.
+api server is the policy engine that sits in front of etcd 
+which is highly consistent database that stores the 
+idealised state that users want and controllers that run in background make sure the actual state of 
+the cluster matches the ideal state.
+these things interact with each other through apis.
+
+schedulers and controllers are plug and play components.
+
+schedueler watches for the creation of pods and assigns them nodes to run on.
+
+controller manager 
+logically we can thing of them as continuous loop,  if something fails, instance of 
+application crashes, controllers will try to start the new container.
+
+controllers brings in  robustness in distributed system.
+
+worker node in cluster has kubelet.
+which is a kubernetes agent that runs on each node in the cluster and make sure containers are running in pod.
+reports back the status to api server.
+
+the term kubelet comes from googlism, there was borg, the agent in borg is called borglet, there is 
+omega, agent of omega is called omlet.
+
+container run time is responsible to running of containers, kubernetes supports several runtimes, 
+docker, rkt or any OCI complaint implementation. docker is the default.
+
+addons are pods and services that provide cluster level service, all kubernetes cluster should
+have cluster dns, it is dns server that serves dns records for kubernetes services.
+
+all the containers created by kubernetes include this dns in their dns searches.
+
+
+Typical flow:
+this sequence diagram shows typical flow for scheduling a pod.
+creating pod is quiete rarely, we use typically a deployment, which creates replicaset, which create pod.
+
+but this is first level.
+
+user creats a pod via api server and api server will write to etcd.
+returns to user, that it got the request.
+
+the scheduler will notice a unbound pod and it reacts and assigns a specific workder node to pod to run on.
+it writes that binding back to the api server. api server writes it to etcd. and everything returns.
+
+the kubelet notices a change in the set of pods that are bound to its node. it runs the container via
+container runtime (in this case docker)
+
+kubelet monitors the status via the container runtime, as the things change, the kubelet will reflect 
+teh current status back to the api server.
+
+here we see user, schedular and kubelet are the three actors working and they dont talkt to each other
+they talk to api server.
+
+one analogy is that
+it is like when u r at a dinner, server takes ur order puts it on a ticker, hands it on kitchen
+kitchen make the food, mark off the items on ticket as they make the food, and they hand it off.
+
+that ticket ends up being whats being done and what is the idealized world.
+
+
+
+watches.
+
+there is a primitive thats built into etcd where we subscribe the changes to a set of items in data base.
+if something changes let me know, let me know what changed.
+
+this gets reflected from etcd through the apiserver
+
+as the actors write stuff, other actors can notice that there is change and react.
+
+kubernetes can work to near real time scheduling due to this optimization.
+
+this is why kubernetes is more than orechestration and more like jazz improv
+
+orchestration implies there is a plan, there is score, everything defined down to minute details.
+kubernetes has to deal with real world, it has to deal to failures, it has to self heal.
+there is no plan upfront, it reacts to events. its is more like jazz improv.
+where we have differnt controllers reacting to each other. 
+
+
+primitives pods.
+
+pod is the smallest deployable unit of computing that can be created and managed in kubernetes.
+
+it encapsulates an application container, storage resources, unique network ip, options that govern 
+how the container should run. 
+
+pod represents a single instance of application
+it might consist of either single container or small number of containers that are tightly 
+coupled that share resources, that need to land on the same node.
+
+there are two ways pods are used
+
+one container per pod model is common case, kubernetes manages the pod rather than containers directly.
+
+then there are cases that need helper process that run as sidecar containers thats where we need,
+multiple container per pod - composed of multiple co-located containers that are tightly coupled and need
+to share resources, this is where the idea of pod comes together.
+
+containers in the pod share storage and network.
+
+each pod get distinct ip address, each container share this ip address and port space, and can find each
+other via localhost. if it wants to talk to pod on other node, then packets get routed over ip network.
+
+they can also communicate with each other using standard inter-process-communication
+
+containers have access to shared volumes, which are defined as part of a pod are are made available
+to be mounted into each application filesystem.
+
+when pods are created, they are assigned a unique uid, and scheduled to nodes, where they remain on that node
+ until termination or deletion.
+
+if a node dies, the pods scheduled on that node, are scheduled for deletion.
+
+so pods are mortal, for this reason pods are rarely created individually.
+
+it is more common in kubernetes to manage your pods using a controller.
+
+
+k config current-context
+k run nginx --image=nginx --port=80 --restart=Never 
+k get pod
+
+- status is running
+- number of containers is 1, it is ready.
+
+k describe pod
+- node on which the pod scheduled.
+- IP address assigned to pod
+- image used by container
+- exposed port
+
+here are the events
+- pod gets scheduled on node.
+- mounting of service account token volume
+- pulling the image from registry
+- container creation from docker
+- container getting started.
+
+kubectl exec -it nginx -- /bin/bash
+
+apt-get update && apt-get install curl
+
+curl localhost
+
+k delete pod nginx
+
+
+replicaset :
+it takes the count, of the number of replicas of a particular pod we want and template for that thing. 
+
+there is loop how many are actually running, if there are less than count, then pods are created based on
+template, if more than count, then pods are delete. making sure the number of pods running is equal to count.
+
+this makes sense in the case where we loose a node running that particular pod due to network split case,
+where we think we lost it, replicaset will spin up a new replacement based on its template, 
+then network split resolves then, we have too many nodes, replica set will kill one, to bring it back in line.
+
+if we change the template, then the new pods will get created with the new template, but will not
+modify the pods that were already existed.
+
+there is another controller called deployment which is built on top of replicaset.
+
+
+deployment:
+
+deployment creats set of replica sets, when ever we change the template in deployment 
+then a new replicaset is created, and then adjusts the number of pods 
+such that it rolls up the new replicaset and rolls down the old replicaset.
+
+it is rolling update across replicasets.
+
+Each new ReplicaSet updates the revision of the Deployment.
+
+so if current deployment is not stable, we can rollback to previous version.
+
+
+hands on:
+
+k create deployment nginx --image=nginx --replicas=3
+
+k get deploy
+
+desired number of replicas is 1
+currently running is one.
+updated to achieve the desired state
+available for user
+time since the application has been running
+
+k describe deploy nginx
+pod template
+new replicaset created 
+events
+scaled up the replica set to 1
+
+k get rs 
+replicaset has name of deployment with pod template hash value 
+this ensures that child replicat sets of a deployment do not overlap.
+
+
+k get pod
+
+updating the deployement:
+A Deployment’s rollout is triggered if the Deployment’s pod template is changed. ex: container image is
+updated. scaling deployment will not trigger a rollout.
+
+k edit deploy nginx --record
+change the nginx version to 1.15
+
+--record flag saves teh kubectl command that is making the changes to the resource.
+
+k get rs
+we can see that old repliset has rolled down and new on rolled up.
+
+k describe deploy nginx
+
+deployment can ensure that only a certain number of pods may be down while they are being updated.
+or only a certain number of pods may be created above the desired number of pods.
+default is 25%, 
+
+it created teh new replicaset and scaled it up by 1
+and then scaled down the old replicaset to 2
+
+so atleast 2 pods were available at more 4 pods were created at all times.
+it then continues to scale up new replicaset and scale done old one.
+
+k get pod
+
+rollback deployment:
+all the deployments rollout history is kept in the system so that you can rollback anytime you want.
+
+suppose u made a typo in putting the image name 1.155
+
+k edit deploy nginx  --record
+
+k rollout status deploy nginx
+the rollout will get stuck.
+
+k get pod
+
+k describe deploy nginx 
+
+k get deploy nginx
+
+k rollout history deployment nginx 
+
+k rollout history deployment nginx --revision=2
+gives detail of the rollout.
+
+
+rolling back to previous revision
+k rollout undo deployment nginx
+or
+k rollout undo deployment nginx --to-revision=3
+
+k describe deploy nginx
+
+
+scaling the deployment:
+k scale deploy nginx --replicas=4
+
+horizantal pod autoscaling
+k autoscale deploy nginx --min=2 --max=5 --cpu-percent=80
+
+
+layering to concepts on top on each other,  pod - replicasets - deployment.
+the users can use core primitives of kuberntes, but also extend them.
+
+
+
+
+stateful set:
+provides guarnettee of ordering and provide unique id to pod 
+there is persistent identifier tht is maintained across any rescheduling.
+
+used for applications that require, stable network id, persistent storage, graceful deployment and scaling
+orderd automated rolling updates.
+
+storage is either provisioned by PV provisioner based on storage class or pre-provisioned by admin
+headless service is used to provide network identity of the pods.
+
+for statfulset with N replicas, each pod in the statefulset will be assigned an integer ordinal
+from 0 up through n-1 that is unique over the set.
+
+each pod in statefulset derives its hostname from the name of the statefulset and the ordinal of the pod.
+statefulset name - ordinal
+web-0 web-1 web-2
+
+each pod will receive a single PV with a storage class  and 1 gb provised storage. 
+
+pv are not deleted when pods or statefulset is deleted, this must be done manually.
+
+pods in statefulsets are created in sequential order 0.. n-1
+terminated in reverse order n-1.. 0
+
+before scaling operation is applied to pod, all of its predecessors must be running and ready.
+
+before the pods is terminated all its sucessors must be completely shutdowm.
+
+update strategy
+on delete: pod needs to be delete, for new pod to be created with new tempate.
+rolling update: default, statefulset will delete and recreat each pod, 
+will proceed in same order as termination, updating each pod one at a time.
+it will wait until an updated pod is running and ready prior to updating its predecessors.
+
+.spec.updateStrategy.rollingUpdate.partition
+pods with ordinal that is greater than or equal to partition will be updated,
+pods with ordinal less than are not updated, even if they are deleted.
+canary deployment.
+
+
+
+
+
+daemon sets
+we want to run a specific daemons on every node or specific set of nodes.
+
+log collection like fluentd, monitoring like prometheus node explorer, datadog agent
+
+when ever a node is added, pods are added to them, 
+nodes are removed from the cluster, pods are garbage collected.
+
+pod template:
+restart policy is Always
+
+run only on some nodes
+.spec.template.spec.nodeSelector
+daeomset will create pods on nodes which match the node selector
+
+.spec.template.spec. affinity
+will create pods on which match teh node.affinity
+
+< 1.13 
+daemon set controller scheduled the pods.
+this led to inconsistent behaviour as daemon set controller scheduled pods without considering pod priority
+and preemption.
+
+> 1.13 ScheduleDaemonSetPods allows you to schedule daemon sets using default scheduler.
+daemonse will add node affinity, instead of nodename, default scheduler is then used to bind the pod to
+target node.
+
+updating daemonsets
+if the node labels are changed then, daemonset will add pods to newly matching nodes, and delete from
+not-matching nodes.
+
+if pod template is changed, then it will use it next time teh node is created.
+existing pods are not changes, u have to force by deleting the existing pods.
+
+
+
+
+
+Job
+one more example of layering is Job
+all the stuff arount replicasets was about creating daemons. something that needs to run for ever,
+if it dies, it needs to be restarted.
+
+alternate is jobs that needs to run to completion, run it till is successfull.
+
+it still uses the pod primitive, used in a new way.
+
+when the specified number of successfull completions is reached, teh job itself is complete.
+deleting the job will cleanup the pods it created. 
+
+running an ex job
+this will compute pi to 2000 places and prints it out.
+it takes 10 sec for completion.
+k create -f manifests/job1.yaml
+
+
+k describe job pi 
+
+status is success 
+
+k get pod
+job is complete but they are not deleted, so that we can see the logs, it needs to be manually deleted
+by default.
+
+k get pods --show-labels 
+u see label job-name=pi
+pods=$(kubectl get pods --selector=job-name=pi --output=jsonpath={.items..metadata.name})
+
+look at the manifest:
+spec.template is the pod template 
+restart policy can be Never or OnFailure
+
+there are 3 main types of jobs
+
+non-parallel jobs 
+only one pod is started.
+job is complete as soon as pod terminates sucessfully.
+.spec.completions and parallelism are not specified. default is 1.
+
+
+job with fixed completion count.
+.spec.completions is set to number of completions needed. .parallelism is not set, default to 1.
+
+parallel jobs with work queue
+.spec.parallelism is specified. .completions are not set
+
+entire job is done, once at least one pod has terminated with success and all pods are terminated.
+
+.restartPolicy=OnFailure then if process exited with a non-zero exit code, or container gets killed
+due to memory limit, then pod stays on the same node, container is restarted.
+
+.restartPolicy=Never 
+if pod gets kicked out of node, due to upgrade or reboot, then job is started on new node.
+
+if you do specify .completions .parallelism > 1, multiple pods will be running at once, 
+then pod must tolerate concurrency. 
+
+.spec.backofflimit
+you want to fail a job after some amount of retries.
+default value is 6
+failed pods gets recreated by job controller with expenential backoff delay 10s, 20s, 40s. 
+capped at 6 min. 
+
+we can set activeDeadlineSeconds - timeout before with jobs needs to complete, else pods are terminated,
+job status will become failed.
+
+job termination
+with the job is complete, pods are not deleted, it is kept of viewing the logs.
+it is up to user to delete old jobs. 
+
+there is .spec.ttlSecondsAfterFinished after with ttl controller will delete teh job cascadingly.
+
+
+
+cronjob
+
+built on top of that we have cron jobs
+cronjob launches a job based on template based on schedule.
+
+
+
+
+
+
+
+
+
+
+custom resource defination.
+u want to do stuff that built in object in kubernetes dont allow you to do.
+
+brandom burns one of the co-founders of kubernetes started what is called as custom resource defination.
+we can create a new types in api server, that will get a restfull api and get storage.
+these types extend, set of objects that kubernetes knows about.
+
+kuberntes is just a database, it is kind of creating new table of new schema.
+
+this stuff is plugged inheriting all the other things that comes with kubernetes api server provides.
+auth, authz, auditing, schema validation, translation, also applies to crd.
+
+we pair this with controllers we can create actions that operate at par with built in kubernetes objects.
+
+this where kubernetes becommes extensible and provides ability to create platfroms on top of this platform.
+
+
+operators:
+coreos folks took the idea of crd, and gave it a new name operators.
+it is specialized controller that has domain specific knowledge about operating specific type of system.
+
+analogy is 
+providing aws rds experience on top of kubernetes, 
+rds, taking all the how to run a data base, 
+run books, all the common tasks.
+randering that in to code, and putting api in front of it.
+
+with kubernetes we achieve the same things, just give a database and make it work.
+
+there are tons of operators over there, for whole bunch of system, 
+oracle came with mysql operator, 
+crds for creating backup, backup scheduels, creating restores.
+
+taken common operations, rendered that into kuberntes resource and build on top kuberntes.
+
+
+writing custom controller is still a tough job, as there is no sdk.
+kubernets Metacontroller: 
+from googler
+it has some controller patterns, for every type of controller.
+we creat a webhook, implemetns the core feature to make the controller work.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
