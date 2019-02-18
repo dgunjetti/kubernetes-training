@@ -16,6 +16,7 @@ provides monitoring logging and health checks
 it enables service discovery, ability of containers to find each other.
 it supports diverse variety of workloads stateless, statefull, and data processing workloads.
 
+
 It design and development is heavily influnced by Google.
 Lot of folks who started kubernetes had worked on google's Borg project, which was its container orchestratiion
 platform, which google was using for more than a decade to deploy its container workloads.
@@ -30,6 +31,16 @@ Google donated kubernetes to cloud native computing foundation in 2014, then on 
 driven project.
 CNCF is bringing in an ecosystem of components and tools to make it easier to deploy, scale and 
 manage applications on kubernetes.
+
+why is kubernetes becoming popular.
+because of workload portability.
+idea is to abstract the cluster implementation from workload.
+what it allows is write the application once and able to deploy it any where
+
+we can deploy on aws, gce or own on premise deployment 
+regardless of where u are the way u deploy the application is to be consistent.
+
+u can use deployment, service, u use the same yaml file to deploy on any cloud provider.
 
 kubernetes componentes
 It consists of master node where control plane components are going to run and worker nodes where application
@@ -118,6 +129,8 @@ where we have differnt controllers reacting to each other.
 
 primitives pods.
 
+kubernetes manages the pod rather than containers directl
+
 pod is the smallest deployable unit of computing that can be created and managed in kubernetes.
 
 it encapsulates an application container, storage resources, unique network ip, options that govern 
@@ -127,9 +140,6 @@ pod represents a single instance of application
 it might consist of either single container or small number of containers that are tightly 
 coupled that share resources, that need to land on the same node.
 
-there are two ways pods are used
-
-one container per pod model is common case, kubernetes manages the pod rather than containers directly.
 
 then there are cases that need helper process that run as sidecar containers thats where we need,
 multiple container per pod - composed of multiple co-located containers that are tightly coupled and need
@@ -175,11 +185,7 @@ here are the events
 - container creation from docker
 - container getting started.
 
-kubectl exec -it nginx -- /bin/bash
-
-apt-get update && apt-get install curl
-
-curl localhost
+kubectl port-forward nginx 8080:80
 
 k delete pod nginx
 
@@ -322,7 +328,23 @@ from 0 up through n-1 that is unique over the set.
 
 each pod in statefulset derives its hostname from the name of the statefulset and the ordinal of the pod.
 statefulset name - ordinal
-web-0 web-1 web-2
+
+
+k create service clusterip nginx --clusterip=None --tcp:80
+k create deployment nginx --image=nginx -o yaml --dry-run > d.yaml
+
+StatefulSet
+serviceName= "nginx"
+ports:
+volumeMounts:
+VolumeClaimTemplates:
+
+k create -f d.yaml
+
+k get statefulsets 
+k get pods 
+
+
 
 each pod will receive a single PV with a storage class  and 1 gb provised storage. 
 
@@ -345,9 +367,6 @@ it will wait until an updated pod is running and ready prior to updating its pre
 pods with ordinal that is greater than or equal to partition will be updated,
 pods with ordinal less than are not updated, even if they are deleted.
 canary deployment.
-
-
-
 
 
 daemon sets
@@ -469,10 +488,8 @@ cronjob
 built on top of that we have cron jobs
 cronjob launches a job based on template based on schedule.
 
-
-
-
-
+k run hello --schedule="*/1 0 0 0 0" --restart=OnFailure --image=busybox \
+-- /bin/sh -c "date; echo hello"
 
 
 

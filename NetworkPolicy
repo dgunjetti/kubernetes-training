@@ -1,0 +1,161 @@
+we are decomposing the monolith to microservices.
+in monolith the services used to each other useing inter process communication.
+
+once we have decomposed them into microservices
+we have replated inter process communication with network communication
+
+now we need to concern our self with who can talk to whom.
+
+usually in a data center there will be a firewall which puts a perimeter around 
+our data center
+
+now we are protected from external connections to our services.
+
+but we also need to protect from threats from inside.
+
+someone would penetrate our external defence and place a rogue container 
+there could be zero-day vulnarability or any vulnarability in your image.
+
+now the threat is inside our cluster.
+we need to protect our component.
+
+we put barrier around every pod. 
+and be very explicity about what traffice that can go out/traffic that can come in.
+now we have reduced the blast radius of the impact of that attack.
+we need to have egress rules along with ingress rules so that 
+limit the impact attacker can cause.
+
+we might have ecommerce page with product details which are implemented as microservices.
+so product details microservice will talk to details microservice and reviews microservice.
+reviews microservice may talk to rating microservice.
+
+we want create network policies to protect each one of these components.
+
+one of the greatest things in kubernetes is that as we are spinning out workloads 
+we can specify metadata, which will be identify data about the workload.
+they are called as labels.
+
+we can add labels like roles and apply policies on these labels and specify
+product page can talk to role reviews, review role can talk to rating role.
+
+in traditional firewall we would have used ip addresses, 
+in kubernetes clusters ip addresses assigned to pod can change as the pods are rescheduled.
+so we use labels to define rules, to loosely couple rules to workloads.
+
+these rules are described declaratively, in network policy resource.
+so that they can be used in automation.
+
+network policy manages the traffic at pod layer.
+we can control what comes to pod and what goes out.
+
+
+network-policy resource used labels to select pods that define rules which specify 
+what traffic is allowed to the selected pods.
+
+network policy are implemented by network plugin
+network plugin needs to support specifiing policy.
+
+by default pods are not isolated 
+pods become isolated by having a network policy that selects them.
+
+go through the yaml file.
+
+policy is applied on namespace.
+podselector selects the grouping of pods to which policy applies.
+empty will select all the pods in the namespace.
+
+policy types may include either Ingress, Egress or both
+it indicates the policy applied on ingress traffic or egress traffic from selected pods.
+if no policy type is specified then Ingress is default.
+Egress will be set if network policy has any egress rules.
+
+ingress
+list of whitelist ingress rules
+it is from section and port section
+
+traffic on single port is allowed coming from one of three sources 
+specified in ipBlock, namespaceSelector, podSelector.
+
+egress
+has two sections, to, port
+traffic to 10.0.0.0/24 is allowed on single port.
+
+go back to pod selector section 
+here it is isolating pods with label role=db in default namespace.
+
+for both ingress and egress traffic
+
+allows traffic on port 6379
+from pods in default namespace with label role=frontend
+
+any pod in namespace with label project=myproject
+
+ipBlock
+172.17.0.0/16 execpt 172.17.1.0/24
+
+there are four kinds of selectors that can be specified in ingress from  and egress to sections.
+
+podselector - selects particular pods in same namespace as np 
+
+namespaceselector - particular ns from which pods are allowed as ingress source 
+or egress destination
+
+namespaceselector & podselector - selects particular pods in particular namespace.
+there is yaml snippet, show both 
+
+k describe will show interpreted policy 
+
+ipblock: ip cidr ranges to allow as ingress source or egress destination 
+pods ip are ephemeral, they will change on rescheduling, 
+so this should be external ip's
+
+Cluster ingress and egress mechanisms often require rewriting the source or destination IP 
+of packets. In cases where this happens, it is not de2ned whether this happens before or 
+after NetworkPolicy processing, and the behavior may be different for different combinations 
+of network plugin, cloud provider, Service implementation
+
+
+In the case of ingress, this means that in some cases you may be able to filter 
+incoming packets based on the actual original source IP, while in other cases,
+the “source IP” that the
+NetworkPolicy acts on may be the IP of a LoadBalancer or of the Pod’s node, etc.
+
+For egress, this means that connections from pods to   IPs that get rewritten to
+cluster-external IPs may or may not be subject to   -based policies.
+
+
+show deny all traffic
+podSelector:{} - select all pods
+ingress: [] - nothing is whitelisted.
+
+all ingress traffic is blocked by matching and not allowing.
+
+https://www.youtube.com/watch?v=3gGpMmYeEO8
+
+https://www.youtube.com/watch?v=kQrmv5Jv8aI
+
+https://kubernetes.io/docs/tasks/administer-cluster/declare-network-policy/
+
+
+kubectl run nginx --image=nginx --replicas=2
+
+kubectl expose deploy nginx --port=80
+
+kubectl get svc, pod
+
+kubectl run busybox --rm --ti --image=busybox /bin/sh 
+
+create a network policy limiting access to nginx with only pods with labels access: "true"
+
+kubectl create -f nginx-policy.yaml
+
+from busybox tryto do 
+wget --spider --timeout=1 nginx
+timeout
+
+kubectl run busybox --rm --ti --labels="access=true" --image=busybox /bin/sh
+wget --spider --timeout=1 nginx
+works
+
+https://github.com/ahmetb/kubernetes-network-policy-recipes
+
