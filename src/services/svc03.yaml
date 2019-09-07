@@ -1,0 +1,16 @@
+# START OMIT
+apiVersion: v1
+kind: Service
+metadata:
+  name: my-service
+spec:
+  selector:                 
+    app: my-app     
+  ports:
+  - name: http            
+    port: 80                
+    targetPort: 8080        
+  - name: https             
+    port: 443               
+    targetPort: 8443 
+# END OMIT  

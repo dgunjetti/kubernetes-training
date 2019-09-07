@@ -1,0 +1,359 @@
+Introduction to Kubernetes
+
+Deepak Gunjetti
+Software Architect @ Andcloud
+deepak@andcloud.io
+@dgunjetti
+
+* Introduction
+
+- Kubernetes is a container orchestrator, that automates the deployment and life-cycle management of containerized applications. 
+
+- It orchestrates compute, storage, networking for workloads.
+
+* Abstracts the underlying infrastructure
+
+- It abstracts the cluster implementation from workloads
+
+.image img/kubernetes01.png
+
+- we can deploy on AWS, GCP, Azure or on-premise, the application remains consistent across the deployments.
+
+* Kubernetes components
+
+- It consists of master node and sets of worker nodes. 
+
+- Control plane runs on master node, applications runs on worker nodes.
+
+* Components..
+
+.image img/components.png
+
+* Components..
+
+- API server is the policy engine that sits in front of etcd
+
+- etcd is a highly consistent distributed database that holds the cluster state. 
+
+- Controller manager is set control loops that reconcile the actual state in cluster to desired state stored in database.
+
+- User express their intent in a declarative schema in yaml files.
+
+* Components..
+
+- Scheduler assigns workloads to appropriate worker nodes.
+
+- Kubelet is agent that runs on every node and makes sure that container are running and healthy.
+
+- Container runtime is responsible to run containers, Kubernetes supports docker, rkt, containerd or any OCI compliant implementation.
+
+* Kubernetes Primitives
+
+* POD
+
+- Basic unit deployment in kubernetes is a Pod.
+
+- Pod is a wrapper over container, it represents an instance of application. 
+
+- It encapsulates container, storage, and other options that govern how container is suppose to run.
+
+- Pod can consist of single container or set of tightly coupled containers that share resources. All the containers in the Pod land on same node.
+
+* Pod example..
+
+- Example of co-located containers can be, one container serving html web pages to outside world and a side-car container populating those html web pages. Both the container share a storage volume. One container writes to volume other container reads from it.
+
+* Pod..
+
+- Pods are ephemeral, if the node goes down, Pods are scheduled for deletion. It is more common to manage Pods using a Controller.
+
+* Relicaset Controller
+
+- Relicaset controller takes a count, and template to create Pods.
+
+- It makes sure specified number of Pods are always running on the cluster. If any node goes down, Pods are rescheduled on different node.
+
+- Replicaset is managed by higher level abstraction called Deployment.
+
+* Deployment
+
+- Deployment manages the rolling out of application. When a new version of application is to be rolled out, it creates a new Replicaset. It rolls down the Pods created by old Replicaset and rolls up the Pods on new Replicaset.
+
+* StatefulSets
+
+- StatefulSets attaches persistent storage with the instance of application. 
+
+- It provides guarantee of ordering and provides unique ID to Pod.
+
+- It is used by applications that requires stable network ID, persistent storage, graceful deployment and termination.
+
+- Storage is either dynamically provisioned or pre-provisioned by Admin. 
+
+- Network ID for the Pods is provided by Headless service.
+
+* DaemonSet
+
+- DaemonSet ensures that a Pod runs on every node in cluster. 
+
+- Examples of these kinds of Pods are log collectors and node monitoring agents.
+
+* Jobs
+
+- Jobs are about tasks that need to run to completion. 
+
+- Job need to run till it is successful.
+
+* Cronjob
+
+- Cronjob creates Jobs based on schedule.
+
+* Service
+
+- Pods are ephemeral, when the Pods are rescheduled, they get new IP address. 
+
+- Services groups the Pods providing the same functionality and provides them a virtual IP address. 
+
+- Workloads can access these Pods using virtual IP address, without having to worry about ephemeral nature of Pods.
+
+* Service...
+
+- Services can also provision LoadBalancers provided by cloud provider, so that functionality provided by group of Pods can be exposed to outside world.
+
+-  LoadBalancer will redirect the traffic to virtual IP address, which redirects to one of the Pods backing the service.
+
+
+* Deep dive 
+
+* Services
+
+- Each service has IP address and port. Client can open connection to this IP address and port and those connections are then routed to one of the pods backing the service.
+
+- The set of pods targeted by service is determined by Label selector.
+
+- Endpoint api object is updated with IP address and port of each pod selected by Label selector.
+
+* Services Example
+
+- There may be multiple pods that all act as the frontend, and there may be single backend database pod.
+
+- We can create a service for frontend pods and configure that to be accessed from outside the cluster.
+
+- Connection to service will load balance across all the backing pods.
+
+- We can create a service for backend service. This gives stable address for the backend pod.
+
+- This enables the frontend pod to easily find the backend service by its name.
+
+* Creating service 
+
+.code -edit src/services/svc01.yaml  /START OMIT/,/END OMIT/
+
+- service my-service accepts connection on port 80 and route to port 8080 on one of pods matching app=my-app label selector.
+
+* Creating service..
+
+    # kubectl create -f src/services/svc01.yaml
+
+    # kubectl  get svc
+    NAME         TYPE        CLUSTER-IP     EXTERNAL-IP   PORT(S)   AGE
+    kubernetes   ClusterIP   10.96.0.1      <none>        443/TCP   16d
+    my-service   ClusterIP   10.98.59.167   <none>        80/TCP    5m17s
+
+- Service is assigned an Cluster IP address, which is accessible only within cluster. This is used by kube-proxy.
+
+- The Service’s selector will be evaluated continuously and the results will be POSTed to an Endpoints object also named “my-service”.
+
+- Kubernetes Services support TCP, UDP and SCTP for protocols. The default is TCP.
+
+* Access the service
+
+- You can send requests to your service from within the cluster
+
+    # kubectl exec my-app-7nog1 -- curl -s http://10.111.249.153
+
+- The kubectl exec command allows you to remotely run arbitrary commands inside an existing container of a pod.
+
+* Endpoints
+
+- An Endpoints resource is a list of IP addresses and ports exposing a service. 
+
+    # kubectl get ep my-service
+        NAME         ENDPOINTS         AGE
+        my-service   172.17.0.5:8080   95m
+
+- The  selector is used to build a list of IPs and ports, which is then stored in the Endpoints resource.
+
+- When a client connects to a service, the kube-proxy selects one of those IP and port pairs and redirects the incoming connection to the server listening at that location.
+
+* Services without selectors
+
+- Services generally abstract access to Kubernetes Pods, but they can also abstract other kinds of backends. For example:
+
+- You want to have an external database cluster in production, but in test you use your own databases.
+
+- You are migrating your workload to Kubernetes and some of your backends run outside of Kubernetes.
+
+- In any of these scenarios you can define a service without a selector.
+
+* Services without selectors...
+
+.code -edit src/services/svc02.yaml  /START OMIT/,/END OMIT/
+
+
+* Proxy mode : IPTables
+
+- kube-proxy watches the Kubernetes master for the addition and removal of Service and Endpoints objects. 
+
+- kube-proxy installs iptables rules which capture traffic to the Service’s clusterIP and Port 
+
+- Redirects that traffic to one of the Service’s backend sets.
+
+- For each Endpoints object, it installs iptables rules which select a backend Pod. By default, the choice of backend is random.
+
+* Proxy mode : IPVS
+
+- kube-proxy watches Kubernetes Services and Endpoints, calls netlink interface to create ipvs rules accordingly and syncs ipvs rules with Kubernetes Services and Endpoints periodically.
+
+- When Service is accessed, traffic will be redirected to one of the backend Pods.
+
+- IPVS is based on netfilter hook function, uses hash table as the underlying data structure and works in the kernel space.
+
+- ipvs provides more options for load balancing algorithm, such as:
+	rr: round-robin
+	lc: least connection
+	dh: destination hashing
+	sh: source hashing
+	sed: shortest expected delay
+	nq: never queue
+
+* Multi-Port Services
+
+- When creating a service with multiple ports, you must specify a name for each port.
+
+.code -edit src/services/svc03.yaml  /START OMIT/,/END OMIT/
+
+* Discovering services
+
+- Kubernetes supports 2 primary modes of finding a Service 
+    environment variables 
+    DNS.
+
+- When a Pod is run on a Node, the kubelet adds a set of environment variables for each active Service
+
+    {SVCNAME}_SERVICE_HOST and {SVCNAME}_SERVICE_PORT variables
+
+    Ex:
+    REDIS_MASTER_SERVICE_HOST=10.0.0.11
+    REDIS_MASTER_SERVICE_PORT=6379
+
+* Discovering services - dns
+
+- The kube-system namespace includes pod core-dns.
+
+- The Pod runs a DNS server, which all other pods running in the cluster are automatically configured to use
+
+- The DNS server watches the Kubernetes API for new Services and creates a set of DNS records for each. 
+
+* Headless services
+
+- Sometimes you don’t need or want load-balancing and a single service IP. In this case, you can create “headless” services by specifying "None" for the cluster IP (.spec.clusterIP).
+
+* Headless services - with selector
+
+- The endpoints controller creates Endpoints records in the API, and modifies the DNS configuration to return A records (addresses) that point directly to the Pods backing the Service.
+
+* Headless services - without selector
+
+- The endpoints controller is not created.
+
+- DNS system looks for and configures either:
+
+- CNAME records for ExternalName-type services.
+
+- A records for any Endpoints that share a name with the service.
+
+* Service Types
+
+- ClusterIP
+
+- NodePort
+
+- LoadBalancer
+
+- ExternalName
+
+* Service Types - ClusterIP
+
+- Exposes the service on a cluster-internal IP
+
+- service only reachable from within the cluster. 
+
+- This is the default ServiceType.
+
+* Service Types - NodePort
+
+- Each cluster node opens a port on the node itself and redirects traffic received on that port to the underlying service. 
+
+- Service is accessible internally via cluster-ip 
+
+- Service is visible externally through a dedicated port on all nodes.
+
+* Service Types - LoadBalancer
+
+- service isaccessible through a dedicated load balancer, provisioned from the cloud infrastructure 
+
+- The load balancer redirects traffic to the node port across all the nodes. 
+
+- Clients connect to the service through the load balancer’s IP.
+
+* Service Types - ExternalName
+
+- Maps the service to the contents of the externalName field (e.g. foo.bar.example.com), by returning a CNAME record with its value.
+
+* Type NodePort
+
+- type field to NodePort
+
+- Kubernetes master will allocate a port from a range specified by --service-node-port-range flag (default: 30000-32767), and each Node will proxy that port (the same port number on every Node) into your Service. 
+
+- That port will be reported in your Service’s .spec.ports[*].nodePort field.
+
+- Service will be visible as both <NodeIP>:spec.ports[*].nodePort and .spec.clusterIP:spec.ports[*].port
+
+* Type NodePort
+
+.code -edit src/services/svc04.yaml  /START OMIT/,/END OMIT/
+
+* Type NodePort
+
+    $ kubectl get svc my-svc-nodeport
+    NAME              TYPE       CLUSTER-IP       EXTERNAL-IP   PORT(S)        AGE
+    my-svc-nodeport   NodePort   10.102.193.100   <none>        80:30123/TCP   19s
+
+- EXTERNAL-IP <nodes> indicates the service is accessible through the IP address of any cluster node. 
+
+- PORT(S) column shows both the internal port of the cluster IP (80) and the node port (30123). 
+
+- A connection received on port 30123 of the first node might be forwarded either to the pod running on the first node or to one of the pods running on the second node.
+
+* Type loadbalancer
+
+- On cloud providers which support external load balancers, setting the type field to LoadBalancer will provision a load balancer for your Service. 
+
+- The actual creation of the load balancer happens asynchronously, and information about the provisioned balancer will be published in the Service’s .status.loadBalancer field. 
+
+* Type loadbalancer
+
+.code -edit src/services/svc05.yaml  /START OMIT/,/END OMIT/
+
+* Type loadbalancer
+
+    $ kubectl get svc my-loadbalancer
+    NAME                 CLUSTER-IP       EXTERNAL-IP      PORT(S)         AGE
+    my-loadbalancer   10.111.241.153   130.211.53.173 
+
+    $ curl http://130.211.53.173
+    You've hit my-app-xueq1
+
+- External clients connect to port 80 of the load balancer and get routed to the implicitly assigned node port on one of the nodes. From there, the connection is forwarded to one of the pod
+

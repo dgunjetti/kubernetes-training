@@ -1,0 +1,21 @@
+# START OMIT
+apiVersion: v1
+kind: Service
+metadata:
+  name: my-svc
+spec:
+  ports:
+  - port: 80
+    targetPort: 8080
+    protocol: TCP
+---
+apiVersion: v1
+kind: Endpoints
+metadata:
+  name: my-svc
+subsets:
+  - addresses:
+    - ip: 1.2.3.4
+  ports: 
+  - port: 9376
+# END OMIT
