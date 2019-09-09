@@ -51,6 +51,8 @@ deepak@andcloud.io
 
 * POD
 
+* POD
+
 - Basic unit deployment in kubernetes is a Pod.
 
 - Pod is a wrapper over container, it represents an instance of application. 
@@ -59,15 +61,127 @@ deepak@andcloud.io
 
 - Pod can consist of single container or set of tightly coupled containers that share resources. All the containers in the Pod land on same node.
 
-* Pod example..
+* Networking
+
+-  Each pod has an IP address in a flat shared networking space that has full communication with other physical computers and pods across the network.
+
+- Containers within a pod share an IP address and port space, and can talk to each other via localhost.
+
+- The hostname is set to the pod’s Name for the application containers within the pod.
+
+* Storage
+
+- A Pod can specify a set of shared storage Volumes. 
+
+- All containers in the Pod can access the shared volumes, allowing those containers to share data. 
+
+- Volumes also allow persistent data in a Pod to survive in case one of the containers within needs to be restarted.
+
+* Pod example
 
 - Example of co-located containers can be, one container serving html web pages to outside world and a side-car container populating those html web pages. Both the container share a storage volume. One container writes to volume other container reads from it.
 
-* Pod..
+* Working with Pods
 
-- Pods are ephemeral, if the node goes down, Pods are scheduled for deletion. It is more common to manage Pods using a Controller.
+- When a Pod gets created (directly by you, or indirectly by a Controller), it is scheduled to run on a Node in your cluster. The Pod remains on that Node until the process is terminated, the pod object is deleted, the Pod is evicted for lack of resources, or the Node fails.
 
-* Relicaset Controller
+- Pods do not, by themselves, self-heal.
+
+- Kubernetes uses a higher-level abstraction, called a Controller, that handles the work of managing the relatively disposable Pod instances.
+
+* Pod Templates
+
+- Controllers use a Pod Template to create the Pods.
+
+- Pod templates are included in other objects, such as Replication Controllers, Jobs, and DaemonSets.
+
+.code -edit src/workloads/pod01.yaml 
+
+* Pod Lifecycle
+
+- Pending: The Pod has been accepted by the Kubernetes system, but one or more of the Container images has not been created. This includes time before being scheduled as well as time spent downloading images over the network, which could take a while.
+
+- Running: The Pod has been bound to a node, and all of the Containers have been created.
+
+- Succeeded: All Containers in the Pod have terminated in success, and will not be restarted.
+
+- Failed: All Containers in the Pod have terminated, and at least one Container has terminated in failure.  That is, the Container either exited with non-zero status.
+
+- Unknown: For some reason the state of the Pod could not be obtained, typically due to an error in communicating with the host of the Pod.
+
+* Restart policy
+
+- A PodSpec has a restartPolicy field with possible values Always, OnFailure, and Never. The default value is Always. 
+
+- restartPolicy only refers to restarts of the Containers by the kubelet on the same node.
+
+- Exited Containers that are restarted by the kubelet are restarted with an exponential back-off delay (10s, 20s, 40s …) capped at five minutes
+
+- once bound to a node, a Pod will never be rebound to another node.
+
+* Controllers 
+
+- Use a Job for Pods that are expected to terminate, for example, batch computations. Jobs are appropriate only for Pods with restartPolicy equal to OnFailure or Never.
+
+- Use a ReplicationController, ReplicaSet, or Deployment for Pods that are not expected to terminate, for example, web servers. ReplicationControllers are appropriate only for Pods with a restartPolicy of Always.
+
+- Use a DaemonSet for Pods that need to run one per machine, because they provide a machine-specific system service.
+
+* Init Containers
+
+- init containers are specialized containers that run before app containers in a Pod. Init containers can contain utilities or setup scripts not present in an app image. 
+
+- Init containers always run to completion.
+
+- Each init container must complete successfully before the next one starts.
+
+- If a Pod’s init container fails, Kubernetes repeatedly restarts the Pod until the init container succeeds. 
+
+* Init containers in use
+
+    src/workloads/initcontainer01.yaml
+
+* Pod Presets 
+
+- PodPresets are objects for injecting certain information into pods at creation time. The information can include secrets, volumes, volume mounts, and environment variables.
+
+- Kubernetes provides an admission controller (PodPreset) which, when enabled, applies Pod Presets to incoming pod creation requests. 
+
+* Pod Presets...
+
+- When a pod creation request occurs, the system does the following:
+
+- Retrieve all PodPresets available for use.
+
+- Check if the label selectors of any PodPreset matches the labels on the pod being created.
+
+- Attempt to merge the various resources defined by the PodPreset into the Pod being created.
+
+- On error, throw an event documenting the merge error on the pod, and create the pod without any injected resources from the PodPreset.
+
+* Pod Presets...
+
+- Create the PodPreset
+
+    kubectl apply -f https://k8s.io/examples/podpreset/preset.yaml
+
+    kubectl get podpreset
+
+- Create a pod
+
+    kubectl create -f https://k8s.io/examples/podpreset/pod.yaml
+
+    kubectl get pods
+
+- Pod spec after admission controller:
+
+    kubectl get pod website -o yaml
+
+* Disruptions
+
+
+
+* Replicaset Controller
 
 - Relicaset controller takes a count, and template to create Pods.
 
@@ -356,4 +470,303 @@ deepak@andcloud.io
     You've hit my-app-xueq1
 
 - External clients connect to port 80 of the load balancer and get routed to the implicitly assigned node port on one of the nodes. From there, the connection is forwarded to one of the pod
+
+* Liveness & Readiness Probes 
+
+* Liveness Probes
+
+- The kubelet uses liveness probes to know when to restart a Container. 
+
+- For example, liveness probes could catch a deadlock, where an application is running, but unable to make progress. Restarting a Container in such a state can help to make the application more available despite bugs.
+
+* Readiness Probes
+
+- The kubelet uses readiness probes to know when a Container is ready to start accepting traffic. 
+
+- A Pod is considered ready when all of its Containers are ready. 
+
+- One use of this signal is to control which Pods are used as backends for Services. 
+
+- When a Pod is not ready, it is removed from Service load balancers.
+
+* Liveness Probes
+
+.code -edit src/probes/01-liveness.yaml  /START OMIT/,/END OMIT/
+
+* Liveness Probes
+
+- The periodSeconds field specifies that the kubelet should perform a liveness probe every 5 seconds.
+
+- The initialDelaySeconds field tells the kubelet that it should wait 5 second before performing the first probe.
+
+- To perform a probe, the kubelet executes the command cat /tmp/healthy in the Container.
+
+- If the command succeeds, it returns 0, and the kubelet considers the Container to be alive and healthy. If the command returns a non-zero value, the kubelet kills the Container and restarts it.
+
+* Liveness Probes
+
+    kubectl create -f https://k8s.io/examples/pods/probe/exec-liveness.yaml
+
+- After 35 seconds, view the Pod events:
+
+    kubectl describe pod liveness-exec
+    Unhealthy   Liveness probe failed: cat: can't open '/tmp/healthy': No such file or directory
+
+    kubectl get pod liveness-exec
+    NAME            READY     STATUS    RESTARTS   AGE
+    liveness-exec   1/1       Running   1          1m
+
+* Define a liveness HTTP request
+
+.code -edit src/probes/02-http.yaml  /START OMIT/,/END OMIT/
+
+- The kubelet sends an HTTP GET request to the server that is running in the Container and listening on port 8080. If the handler for the server’s /healthz path returns a success code, the kubelet considers the Container to be alive and healthy. If the handler returns a failure code, the kubelet kills the Container and restarts it.
+
+* Define a TCP liveness probe
+
+.code -edit src/probes/03-tcp.yaml  /START OMIT/,/END OMIT/
+
+- kubelet will attempt to open a socket to container on the specified port. If it can establish a connection, the container is considered healthy, if it can’t it is considered a failure.
+
+* Define readiness probes
+
+- Sometimes, applications are temporarily unable to serve traffic. For example, an application might need to load large data or configuration files during startup. In such cases, you don’t want to kill the application, but you don’t want to send it requests either.
+
+- A pod with containers reporting that they are not ready does not receive traffic through Kubernetes Services.
+
+- Readiness and liveness probes can be used in parallel for the same container. Using both can ensure that traffic does not reach a container that is not ready for it, and that containers are restarted when they fail.
+
+* External name
+
+- If you want to access a public API, you can define a service that points to it.
+
+.code -edit src/services/svc06.yaml  /START OMIT/,/END OMIT/
+
+- After the service is created, pods can connect to the external service through the external-service.default.svc.cluster.local domain name
+
+* Kubernetes networking
+
+- Every pod its own cluster-private-IP address
+
+- Containers within a Pod can all reach each other’s ports on localhost
+
+- All pods in a cluster can see each other without NAT. 
+
+* Kubernetes networking
+
+    $ kubectl get pods -l run=my-nginx -o wide
+    NAME                        READY     STATUS    RESTARTS   IP            
+    my-nginx-3800858182-jr4a2   1/1       Running   0          10.244.3.4    
+    my-nginx-3800858182-kna2y   1/1       Running   0          10.244.2.5    
+
+- You should be able to ssh into any node in your cluster and curl both IPs. 
+
+- Note that the containers are not using port 80 on the node
+
+- This means you can run multiple nginx pods on the same node all using the same containerPort and access them from any other pod or node in your cluster using IP.
+
+* Securing the Service
+
+    #create a public private key pair
+    openssl req -x509 -nodes -days 365 -newkey rsa:2048 
+    -keyout /tmp/nginx.key -out /tmp/nginx.crt 
+    -subj "/CN=my-nginx/O=my-nginx"
+
+    #convert the keys to base64 encoding
+    cat /tmp/nginx.crt | base64
+    cat /tmp/nginx.key | base64
+
+* Securing the Service...
+
+    src/services/secure/secret.yaml
+
+    src/services/secure/nginx-app.yaml
+
+- The nginx server serves HTTP traffic on port 80 and HTTPS traffic on 443, and nginx Service exposes both ports.
+
+- Each container has access to the keys through a volume mounted at /etc/nginx/ssl. This is setup before the nginx server is started.
+
+* Securing the Service...
+
+    $ kubectl get pods -o yaml | grep -i podip
+        podIP: 10.244.3.5
+    node $ curl -k https://10.244.3.5
+    ...
+    <h1>Welcome to nginx!</h1>
+
+- -k parameter is to tell curl to ignore the CName mismatch. this is because we don’t know anything about the pods running nginx at certificate generation time.
+
+* Securing the Service...
+
+    src/services/secure/curlpod.yaml
+
+    $ kubectl create -f ./curlpod.yaml
+    $ kubectl get pods -l app=curlpod
+    NAME                               READY     STATUS    RESTARTS   AGE
+    curl-deployment-1515033274-1410r   1/1       Running   0          1m
+    $ kubectl exec curl-deployment-1515033274-1410r -- 
+    curl https://my-nginx --cacert /etc/nginx/ssl/nginx.crt
+    ...
+    <title>Welcome to nginx!</title>
+
+* Ingress
+
+* Ingress
+
+- Ingress exposes HTTP and HTTPS routes from outside the cluster to services within the cluster. 
+
+- Traffic routing is controlled by rules defined on the ingress controller.
+
+- Ingress provides load balancing, SSL termination and name-based virtual hosting.
+
+- Ingress controller is responsible for fulfulling the ingress, usually with load balancer.
+
+- Ingress resource contains rules for directing HTTP traffic.
+
+* Ingress..
+
+.code -edit src/ingress/01-ingress.yaml  /START OMIT/,/END OMIT/
+
+* Ingress rules
+
+- host: if no host is specified, rules apply to all incoming request. If host is provided, the rules apply to that host.
+
+- list of paths: each of which are associated with backend defined by serviceName and servicePort.
+
+* Default Backend
+
+- An Ingress with no rules sends all traffic to a single default backend. 
+
+- The default backend is typically a configuration option of the Ingress controller
+
+- If none of the hosts or paths match the HTTP request in the Ingress objects, the traffic is routed to your default backend.
+
+* Types of Ingress, Single service ingress
+
+- exposing single service
+
+- specifying default backend with no rules.
+
+  apiVersion: networking.k8s.io/v1beta1
+  kind: Ingress
+  metadata: 
+      name: test-ingress
+  spec: 
+      backend:
+          serviceName: testsvc
+          servicePort: 80
+
+*  Single service ingress
+
+- kubectl apply -f ingress.yaml
+
+- kubectl get ingress test-ingress
+
+- shows IP allocated by the Ingress controller to satisfy this Ingress.
+
+* Simple fan out
+
+- Routes traffic from a single IP address to more than one service, based on HTTP URI.
+
+- Ingress allows you to keep the number of load balancer to minimum.
+
+
+  http:
+      paths:
+      - path: /foo
+      backend:
+          serviceName: service1
+          servicePort: 4200
+      - path: /bar
+      backend:
+          serviceName: service2
+          servicePort: 8080
+
+- The Ingress controller provisions an load balancer that satisfies the Ingress, as long as the services (s1, s2) exist. 
+
+* Name based virtual hosting
+
+- Name-based virtual hosts support routing HTTP traffic to multiple host names at the same IP address.
+
+  foo.bar.com --|                 |-> foo.bar.com s1:80
+                | 178.91.123.132  |
+  bar.foo.com --|                 |-> bar.foo.com s2:80
+
+* Name based virtual hosting..
+
+  rules:
+  - host: foo.bar.com
+    http:
+      paths:
+      - backend:
+          serviceName: service1
+          servicePort: 80
+  - host: bar.foo.com
+    http:
+      paths:
+      - backend:
+          serviceName: service2
+          servicePort: 80
+
+
+- If you create an Ingress resource without any hosts defined in the rules, then any web traffic to the IP address of your Ingress controller can be matched without a name based virtual host being required.
+
+* TLS
+
+- You can secure an Ingress by specifying a Secret that contains a TLS private key and certificate. 
+
+- Ingress controller to secure the channel from the client to the load balancer using TLS. 
+
+  apiVersion: v1
+  kind: Secret
+  metadata:
+    name: testsecret-tls
+    namespace: default
+  data:
+    tls.crt: base64 encoded cert
+    tls.key: base64 encoded key
+  type: kubernetes.io/tls
+
+* TLS
+
+  apiVersion: networking.k8s.io/v1beta1
+  kind: Ingress
+  metadata:
+    name: tls-example-ingress
+  spec:
+    tls:
+    - hosts:
+      - sslexample.foo.com
+      secretName: testsecret-tls
+    rules:
+      - host: sslexample.foo.com
+        http:
+          paths:
+          - path: /
+            backend:
+              serviceName: service1
+              servicePort: 80
+
+
+- certificate is created with CN for sslexample.foo.com.
+
+
+* Ingress Controllers
+
+- In order for the Ingress resource to work, the cluster must have an ingress controller running.
+
+- Kubernetes as a project currently supports and maintains GCE and nginx controllers.
+
+- Additional controllers, HAProxy, Contour
+
+
+* Using multiple Ingress controllers
+
+- You may deploy any number of ingress controllers within a cluster. 
+
+- When you create an ingress, you should annotate each ingress with the appropriate ingress.class to indicate which ingress controller should be used if more than one exists within your cluster.
+
+* Network policy
+
+
 
