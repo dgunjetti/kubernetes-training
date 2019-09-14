@@ -1,4 +1,3 @@
-# START OMIT
 apiVersion: v1
 kind: Service
 metadata:
@@ -8,4 +7,3 @@ spec:
   externalName: someapi.somecompany.com
   ports:
   - port: 80
-# END OMIT

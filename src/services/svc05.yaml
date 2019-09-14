@@ -1,8 +1,7 @@
 kind: Service
 apiVersion: v1
 metadata:
-  name: my-service
-# START OMIT  
+  name: my-service 
 spec:
   type: LoadBalancer
   selector:
@@ -11,4 +10,3 @@ spec:
   - protocol: TCP
     port: 80
     targetPort: 9376
-# END OMIT

@@ -37,10 +37,6 @@ deepak@andcloud.io
 
 - Controller manager is set control loops that reconcile the actual state in cluster to desired state stored in database.
 
-- User express their intent in a declarative schema in yaml files.
-
-* Components..
-
 - Scheduler assigns workloads to appropriate worker nodes.
 
 - Kubelet is agent that runs on every node and makes sure that container are running and healthy.
@@ -57,7 +53,7 @@ deepak@andcloud.io
 
 - Pod is a wrapper over container, it represents an instance of application. 
 
-- It encapsulates container, storage, and other options that govern how container is suppose to run.
+- It encapsulates container, storage/network, and other options that govern how container is suppose to run.
 
 - Pod can consist of single container or set of tightly coupled containers that share resources. All the containers in the Pod land on same node.
 
@@ -85,15 +81,7 @@ deepak@andcloud.io
 
 - When a Pod gets created (directly by you, or indirectly by a Controller), it is scheduled to run on a Node in your cluster. The Pod remains on that Node until the process is terminated, the pod object is deleted, the Pod is evicted for lack of resources, or the Node fails.
 
-- Pods do not, by themselves, self-heal.
-
-- Kubernetes uses a higher-level abstraction, called a Controller, that handles the work of managing the relatively disposable Pod instances.
-
 * Pod Templates
-
-- Controllers use a Pod Template to create the Pods.
-
-- Pod templates are included in other objects, such as Replication Controllers, Jobs, and DaemonSets.
 
 .code -edit src/workloads/pod01.yaml 
 
@@ -117,7 +105,7 @@ deepak@andcloud.io
 
 - Exited Containers that are restarted by the kubelet are restarted with an exponential back-off delay (10s, 20s, 40s …) capped at five minutes
 
-- once bound to a node, a Pod will never be rebound to another node.
+- once bound to a node, a Pod will not rebound to another node. A higher level contruct called controllers are used to reschedule the pods on another node in case of node failures.
 
 * Controllers 
 
@@ -225,26 +213,15 @@ deepak@andcloud.io
 
 - Pods are ephemeral, when the Pods are rescheduled, they get new IP address. 
 
-- Services groups the Pods providing the same functionality and provides them a virtual IP address. 
+- Services groups the Pods providing the same functionality and provides them a virtual IP address and ports. 
 
-- Workloads can access these Pods using virtual IP address, without having to worry about ephemeral nature of Pods.
-
-* Service...
+- Workloads can access these Pods using virtual IP address and port, connection is routed to one of the pod backing the service.
 
 - Services can also provision LoadBalancers provided by cloud provider, so that functionality provided by group of Pods can be exposed to outside world.
 
 -  LoadBalancer will redirect the traffic to virtual IP address, which redirects to one of the Pods backing the service.
 
-
-* Deep dive 
-
-* Services
-
-- Each service has IP address and port. Client can open connection to this IP address and port and those connections are then routed to one of the pods backing the service.
-
 - The set of pods targeted by service is determined by Label selector.
-
-- Endpoint api object is updated with IP address and port of each pod selected by Label selector.
 
 * Services Example
 
@@ -273,7 +250,7 @@ deepak@andcloud.io
     kubernetes   ClusterIP   10.96.0.1      <none>        443/TCP   16d
     my-service   ClusterIP   10.98.59.167   <none>        80/TCP    5m17s
 
-- Service is assigned an Cluster IP address, which is accessible only within cluster. This is used by kube-proxy.
+- Service is assigned an Cluster IP address, which is accessible only within cluster.
 
 - The Service’s selector will be evaluated continuously and the results will be POSTed to an Endpoints object also named “my-service”.
 
@@ -344,7 +321,7 @@ deepak@andcloud.io
 
 - When creating a service with multiple ports, you must specify a name for each port.
 
-.code -edit src/services/svc03.yaml  /START OMIT/,/END OMIT/
+.code -edit src/services/svc03.yaml 
 
 * Discovering services
 
@@ -412,18 +389,6 @@ deepak@andcloud.io
 
 - Service is visible externally through a dedicated port on all nodes.
 
-* Service Types - LoadBalancer
-
-- service isaccessible through a dedicated load balancer, provisioned from the cloud infrastructure 
-
-- The load balancer redirects traffic to the node port across all the nodes. 
-
-- Clients connect to the service through the load balancer’s IP.
-
-* Service Types - ExternalName
-
-- Maps the service to the contents of the externalName field (e.g. foo.bar.example.com), by returning a CNAME record with its value.
-
 * Type NodePort
 
 - type field to NodePort
@@ -432,11 +397,14 @@ deepak@andcloud.io
 
 - That port will be reported in your Service’s .spec.ports[*].nodePort field.
 
-- Service will be visible as both <NodeIP>:spec.ports[*].nodePort and .spec.clusterIP:spec.ports[*].port
+- Service will be visible as both 
+    
+    <NodeIP>:spec.ports[*].nodePort 
+    .spec.clusterIP:spec.ports[*].port
 
 * Type NodePort
 
-.code -edit src/services/svc04.yaml  /START OMIT/,/END OMIT/
+.code -edit src/services/svc04.yaml
 
 * Type NodePort
 
@@ -448,7 +416,16 @@ deepak@andcloud.io
 
 - PORT(S) column shows both the internal port of the cluster IP (80) and the node port (30123). 
 
-- A connection received on port 30123 of the first node might be forwarded either to the pod running on the first node or to one of the pods running on the second node.
+- A connection received on port 30123 on a node might be forwarded either to the pod running on the same node or to one of the pods running on another node.
+
+* Service Types - LoadBalancer
+
+- service is accessible through a dedicated load balancer, provisioned from the cloud infrastructure 
+
+- Clients connect to the service through the load balancer’s IP.
+
+- The load balancer redirects traffic to the node port across all the nodes. 
+
 
 * Type loadbalancer
 
@@ -458,7 +435,7 @@ deepak@andcloud.io
 
 * Type loadbalancer
 
-.code -edit src/services/svc05.yaml  /START OMIT/,/END OMIT/
+.code -edit src/services/svc05.yaml
 
 * Type loadbalancer
 
@@ -470,6 +447,19 @@ deepak@andcloud.io
     You've hit my-app-xueq1
 
 - External clients connect to port 80 of the load balancer and get routed to the implicitly assigned node port on one of the nodes. From there, the connection is forwarded to one of the pod
+
+* Service Types - ExternalName
+
+- Maps the service to the contents of the externalName field (e.g. foo.bar.example.com), by returning a CNAME record with its value.
+
+* External name
+
+- If you want to access a public API, you can define a service that points to it.
+
+.code -edit src/services/svc06.yaml 
+
+- After the service is created, pods can connect to the external service through the external-service.default.svc.cluster.local domain name
+
 
 * Liveness & Readiness Probes 
 
@@ -491,7 +481,7 @@ deepak@andcloud.io
 
 * Liveness Probes
 
-.code -edit src/probes/01-liveness.yaml  /START OMIT/,/END OMIT/
+.code -edit src/probes/01-liveness.yaml
 
 * Liveness Probes
 
@@ -536,13 +526,6 @@ deepak@andcloud.io
 
 - Readiness and liveness probes can be used in parallel for the same container. Using both can ensure that traffic does not reach a container that is not ready for it, and that containers are restarted when they fail.
 
-* External name
-
-- If you want to access a public API, you can define a service that points to it.
-
-.code -edit src/services/svc06.yaml  /START OMIT/,/END OMIT/
-
-- After the service is created, pods can connect to the external service through the external-service.default.svc.cluster.local domain name
 
 * Kubernetes networking
 

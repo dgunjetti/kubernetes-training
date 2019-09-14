@@ -5,7 +5,6 @@ metadata:
     test: liveness
   name: liveness-exec
 spec:
-# START OMIT
   containers:
   - name: liveness
     image: k8s.gcr.io/busybox
@@ -20,4 +19,3 @@ spec:
         - /tmp/healthy
       initialDelaySeconds: 5
       periodSeconds: 5
-# END OMIT
