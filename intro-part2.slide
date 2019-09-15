@@ -1,0 +1,382 @@
+Introduction to Kubernetes
+
+Deepak Gunjetti
+Software Architect @ Andcloud
+deepak@andcloud.io
+@dgunjetti
+
+* Service
+
+* Service
+
+- Pods are ephemeral, when the Pods are rescheduled, they get new IP address. 
+
+- Services groups the Pods providing the same functionality and provides them a virtual IP address and ports. 
+
+- Workloads can access these Pods using virtual IP address and port, connection is routed to one of the pod backing the service.
+
+- The set of pods targeted by service is determined by Label selector.
+
+* Services Example
+
+- There may be multiple pods that all act as the frontend, and there may be single backend database pod.
+
+- We can create a service for frontend pods and configure that to be accessed from outside the cluster.
+
+- Connection to service will load balance across all the backing pods.
+
+- We can create a service for backend service. This gives stable address for the backend pod.
+
+- This enables the frontend pod to easily find the backend service by its name.
+
+* Creating service 
+
+.code -edit src/services/svc01.yaml  /START OMIT/,/END OMIT/
+
+- service my-service accepts connection on port 80 and route to port 8080 on one of pods matching app=my-app label selector.
+
+* Creating service..
+
+    # kubectl create -f src/services/svc01.yaml
+
+    # kubectl  get svc
+    NAME         TYPE        CLUSTER-IP     EXTERNAL-IP   PORT(S)   AGE
+    kubernetes   ClusterIP   10.96.0.1      <none>        443/TCP   16d
+    my-service   ClusterIP   10.98.59.167   <none>        80/TCP    5m17s
+
+- Service is assigned an Cluster IP address, which is accessible only within cluster.
+
+- The Service’s selector will be evaluated continuously and the results will be POSTed to an Endpoints object also named “my-service”.
+
+- Kubernetes Services support TCP, UDP and SCTP for protocols. The default is TCP.
+
+* Access the service
+
+- You can send requests to your service from within the cluster
+
+    # kubectl exec my-app-7nog1 -- curl -s http://10.111.249.153
+
+- The kubectl exec command allows you to remotely run arbitrary commands inside an existing container of a pod.
+
+* Endpoints
+
+- An Endpoints resource is a list of IP addresses and ports exposing a service. 
+
+    # kubectl get ep my-service
+        NAME         ENDPOINTS         AGE
+        my-service   172.17.0.5:8080   95m
+
+- The  selector is used to build a list of IPs and ports, which is then stored in the Endpoints resource.
+
+- When a client connects to a service, the kube-proxy selects one of those IP and port pairs and redirects the incoming connection to the server listening at that location.
+
+* Services without selectors
+
+- Services generally abstract access to Kubernetes Pods, but they can also abstract other kinds of backends. For example:
+
+- You want to have an external database cluster in production, but in test you use your own databases.
+
+- You are migrating your workload to Kubernetes and some of your backends run outside of Kubernetes.
+
+- In any of these scenarios you can define a service without a selector.
+
+* Services without selectors...
+
+.code -edit src/services/svc02.yaml  /START OMIT/,/END OMIT/
+
+
+* Proxy mode : IPTables
+
+- kube-proxy watches the Kubernetes master for the addition and removal of Service and Endpoints objects. 
+
+- kube-proxy installs iptables rules which capture traffic to the Service’s clusterIP and Port 
+
+- Redirects that traffic to one of the Service’s backend sets.
+
+- For each Endpoints object, it installs iptables rules which select a backend Pod. By default, the choice of backend is random.
+
+* Proxy mode : IPVS
+
+- kube-proxy watches Kubernetes Services and Endpoints, calls netlink interface to create ipvs rules accordingly and syncs ipvs rules with Kubernetes Services and Endpoints periodically.
+
+- When Service is accessed, traffic will be redirected to one of the backend Pods.
+
+- IPVS is based on netfilter hook function, uses hash table as the underlying data structure and works in the kernel space.
+
+- ipvs provides more options for load balancing algorithm, such as:
+	rr: round-robin
+	lc: least connection
+	dh: destination hashing
+	sh: source hashing
+	sed: shortest expected delay
+	nq: never queue
+
+* Multi-Port Services
+
+- When creating a service with multiple ports, you must specify a name for each port.
+
+.code -edit src/services/svc03.yaml 
+
+* Discovering services
+
+- Kubernetes supports 2 primary modes of finding a Service 
+    environment variables 
+    DNS.
+
+- When a Pod is run on a Node, the kubelet adds a set of environment variables for each active Service
+
+    {SVCNAME}_SERVICE_HOST and {SVCNAME}_SERVICE_PORT variables
+
+    Ex:
+    REDIS_MASTER_SERVICE_HOST=10.0.0.11
+    REDIS_MASTER_SERVICE_PORT=6379
+
+* Discovering services - dns
+
+- The kube-system namespace includes pod core-dns.
+
+- The Pod runs a DNS server, which all other pods running in the cluster are automatically configured to use
+
+- The DNS server watches the Kubernetes API for new Services and creates a set of DNS records for each. 
+
+* Headless services
+
+- Sometimes you don’t need or want load-balancing and a single service IP. In this case, you can create “headless” services by specifying "None" for the cluster IP (.spec.clusterIP).
+
+* Headless services - with selector
+
+- The endpoints controller creates Endpoints records in the API, and modifies the DNS configuration to return A records (addresses) that point directly to the Pods backing the Service.
+
+* Headless services - without selector
+
+- The endpoints controller is not created.
+
+- DNS system looks for and configures either:
+
+- CNAME records for ExternalName-type services.
+
+- A records for any Endpoints that share a name with the service.
+
+* Service Types
+
+- ClusterIP
+
+- NodePort
+
+- LoadBalancer
+
+- ExternalName
+
+* Service Types - ClusterIP
+
+- Exposes the service on a cluster-internal IP
+
+- service only reachable from within the cluster. 
+
+- This is the default ServiceType.
+
+* Service Types - NodePort
+
+- Each cluster node opens a port on the node itself and redirects traffic received on that port to the underlying service. 
+
+- Service is accessible internally via cluster-ip 
+
+- Service is visible externally through a dedicated port on all nodes.
+
+* Type NodePort
+
+- type field to NodePort
+
+- Kubernetes master will allocate a port from a range specified by --service-node-port-range flag (default: 30000-32767), and each Node will proxy that port (the same port number on every Node) into your Service. 
+
+- That port will be reported in your Service’s .spec.ports[*].nodePort field.
+
+- Service will be visible as both 
+    
+    <NodeIP>:spec.ports[*].nodePort 
+    .spec.clusterIP:spec.ports[*].port
+
+* Type NodePort
+
+.code -edit src/services/svc04.yaml
+
+* Type NodePort
+
+    $ kubectl get svc my-svc-nodeport
+    NAME              TYPE       CLUSTER-IP       EXTERNAL-IP   PORT(S)        AGE
+    my-svc-nodeport   NodePort   10.102.193.100   <none>        80:30123/TCP   19s
+
+- EXTERNAL-IP <nodes> indicates the service is accessible through the IP address of any cluster node. 
+
+- PORT(S) column shows both the internal port of the cluster IP (80) and the node port (30123). 
+
+- A connection received on port 30123 on a node might be forwarded either to the pod running on the same node or to one of the pods running on another node.
+
+* Service Types - LoadBalancer
+
+- service is accessible through a dedicated load balancer, provisioned from the cloud infrastructure 
+
+- Clients connect to the service through the load balancer’s IP.
+
+- The load balancer redirects traffic to the node port across all the nodes. 
+
+
+* Type loadbalancer
+
+- On cloud providers which support external load balancers, setting the type field to LoadBalancer will provision a load balancer for your Service. 
+
+- The actual creation of the load balancer happens asynchronously, and information about the provisioned balancer will be published in the Service’s .status.loadBalancer field. 
+
+* Type loadbalancer
+
+.code -edit src/services/svc05.yaml
+
+* Type loadbalancer
+
+    $ kubectl get svc my-loadbalancer
+    NAME                 CLUSTER-IP       EXTERNAL-IP      PORT(S)         AGE
+    my-loadbalancer   10.111.241.153   130.211.53.173 
+
+    $ curl http://130.211.53.173
+    You've hit my-app-xueq1
+
+- External clients connect to port 80 of the load balancer and get routed to the implicitly assigned node port on one of the nodes. From there, the connection is forwarded to one of the pod
+
+* Service Types - ExternalName
+
+- Maps the service to the contents of the externalName field (e.g. foo.bar.example.com), by returning a CNAME record with its value.
+
+* External name
+
+- If you want to access a public API, you can define a service that points to it.
+
+.code -edit src/services/svc06.yaml 
+
+- After the service is created, pods can connect to the external service through the external-service.default.svc.cluster.local domain name
+
+
+* Liveness & Readiness Probes 
+
+* Liveness Probes
+
+- The kubelet uses liveness probes to know when to restart a Container. 
+
+- For example, liveness probes could catch a deadlock, where an application is running, but unable to make progress. Restarting a Container in such a state can help to make the application more available despite bugs.
+
+* Readiness Probes
+
+- The kubelet uses readiness probes to know when a Container is ready to start accepting traffic. 
+
+- A Pod is considered ready when all of its Containers are ready. 
+
+- One use of this signal is to control which Pods are used as backends for Services. 
+
+- When a Pod is not ready, it is removed from Service load balancers.
+
+* Liveness Probes
+
+.code -edit src/probes/01-liveness.yaml
+
+* Liveness Probes
+
+- The periodSeconds field specifies that the kubelet should perform a liveness probe every 5 seconds.
+
+- The initialDelaySeconds field tells the kubelet that it should wait 5 second before performing the first probe.
+
+- To perform a probe, the kubelet executes the command cat /tmp/healthy in the Container.
+
+- If the command succeeds, it returns 0, and the kubelet considers the Container to be alive and healthy. If the command returns a non-zero value, the kubelet kills the Container and restarts it.
+
+* Liveness Probes
+
+    kubectl create -f https://k8s.io/examples/pods/probe/exec-liveness.yaml
+
+- After 35 seconds, view the Pod events:
+
+    kubectl describe pod liveness-exec
+    Unhealthy   Liveness probe failed: cat: can't open '/tmp/healthy': No such file or directory
+
+    kubectl get pod liveness-exec
+    NAME            READY     STATUS    RESTARTS   AGE
+    liveness-exec   1/1       Running   1          1m
+
+* Define a liveness HTTP request
+
+.code -edit src/probes/02-http.yaml  /START OMIT/,/END OMIT/
+
+- The kubelet sends an HTTP GET request to the server that is running in the Container and listening on port 8080. If the handler for the server’s /healthz path returns a success code, the kubelet considers the Container to be alive and healthy. If the handler returns a failure code, the kubelet kills the Container and restarts it.
+
+* Define a TCP liveness probe
+
+.code -edit src/probes/03-tcp.yaml  /START OMIT/,/END OMIT/
+
+- kubelet will attempt to open a socket to container on the specified port. If it can establish a connection, the container is considered healthy, if it can’t it is considered a failure.
+
+* Define readiness probes
+
+- Sometimes, applications are temporarily unable to serve traffic. For example, an application might need to load large data or configuration files during startup. In such cases, you don’t want to kill the application, but you don’t want to send it requests either.
+
+- A pod with containers reporting that they are not ready does not receive traffic through Kubernetes Services.
+
+- Readiness and liveness probes can be used in parallel for the same container. Using both can ensure that traffic does not reach a container that is not ready for it, and that containers are restarted when they fail.
+
+
+* Kubernetes networking
+
+- Every pod its own cluster-private-IP address
+
+- Containers within a Pod can all reach each other’s ports on localhost
+
+- All pods in a cluster can see each other without NAT. 
+
+* Kubernetes networking
+
+    $ kubectl get pods -l run=my-nginx -o wide
+    NAME                        READY     STATUS    RESTARTS   IP            
+    my-nginx-3800858182-jr4a2   1/1       Running   0          10.244.3.4    
+    my-nginx-3800858182-kna2y   1/1       Running   0          10.244.2.5    
+
+- You should be able to ssh into any node in your cluster and curl both IPs. 
+
+- Note that the containers are not using port 80 on the node
+
+- This means you can run multiple nginx pods on the same node all using the same containerPort and access them from any other pod or node in your cluster using IP.
+
+* Securing the Service
+
+    #create a public private key pair
+    openssl req -x509 -nodes -days 365 -newkey rsa:2048 
+    -keyout /tmp/nginx.key -out /tmp/nginx.crt 
+    -subj "/CN=my-nginx/O=my-nginx"
+
+    #convert the keys to base64 encoding
+    cat /tmp/nginx.crt | base64
+    cat /tmp/nginx.key | base64
+
+* Securing the Service...
+
+    src/services/secure/secret.yaml
+
+    src/services/secure/nginx-app.yaml
+
+- The nginx server serves HTTP traffic on port 80 and HTTPS traffic on 443, and nginx Service exposes both ports.
+
+- Each container has access to the keys through a volume mounted at /etc/nginx/ssl. This is setup before the nginx server is started.
+
+* Securing the Service...
+
+    $ kubectl get pods -o yaml | grep -i podip
+        podIP: 10.244.3.5
+    node $ curl -k https://10.244.3.5
+    ...
+    <h1>Welcome to nginx!</h1>
+
+- -k parameter is to tell curl to ignore the CName mismatch. this is because we don’t know anything about the pods running nginx at certificate generation time.
+
+* Securing the Service...
+
+    src/services/secure/curlpod.yaml
+
+    $ kubectl create -f ./curlpod.yaml
+    $ kubectl get pods -l app=curlpod
+

@@ -1,0 +1,431 @@
+Introduction to Kubernetes
+
+Deepak Gunjetti
+Software Architect @ Andcloud
+deepak@andcloud.io
+@dgunjetti
+
+
+* Authentication and Authorization 
+
+* Auth and Authz
+
+- As Kubernetes is entirely API driven, controlling and limiting who can access the cluster and what actions they are allowed to perform is the first line of defense.
+
+- Kubernetes expects that all API communication in the cluster is encrypted by default with TLS, and the majority of installation methods will allow the necessary certificates to be created and distributed to the cluster components.
+
+- Integration with an existing OIDC or LDAP server can be done to allow users to be subdivided into groups.
+
+* Auth and Authz...
+
+- All API clients must be authenticated, even those that are part of the infrastructure like nodes, proxies, the scheduler, and volume plugins.
+
+- These clients are typically service accounts or use x509 client certificates.
+
+- Once authenticated, every API call is also expected to pass an authorization check. Kubernetes ships an integrated Role-Based Access Control (RBAC) component that matches an incoming user or group to a set of permissions bundled into roles.
+
+- These permissions combine verbs (get, create, delete) with resources (pods, services, nodes) and can be namespace or cluster scoped.
+
+* Auth and Authz...
+
+- When you access the cluster using kubectl, you are authenticated by the apiserver as a particular User Account.
+
+- Processes in containers inside pods can also contact the apiserver. When they do, they are authenticated as a particular Service Account.
+
+* Access to the Kubernetes API
+
+- In a typical Kubernetes cluster, the API serves on port 443. The API server presents a certificate. 
+
+- This certificate is often self-signed, so $USER/.kube/config on the user’s machine typically contains the root certificate for the API server’s certificate.
+
+- Once TLS is established, the HTTP request moves to the Authentication step.
+
+* Access to the Kubernetes API...
+
+- cluster admin configures the API server to run one or more Authenticator Modules.
+
+- Authentication modules include Client Certificates, Password, and Plain Tokens, Bootstrap Tokens, and JWT Tokens (used for service accounts).
+
+- Multiple authentication modules can be specified, in which case each one is tried in sequence, until one of them succeeds.
+
+- While Kubernetes uses usernames for access control decisions and in request logging, it does not have a user object nor does it store usernames or other information about users in its object store.
+
+
+* API Server Ports and IP
+
+- By default the Kubernetes API server serves HTTP on 2 ports: Localhost Port, Secure Port
+
+Localhost Port:
+
+- Meant of for other components of the master node scheduler, controller-manager to talk to the API
+
+- Default IP is localhost, Default is port 8080
+
+Secure Port:
+
+- uses TLS. Set cert with --tls-cert-file and key with --tls-private-key-file flag.
+
+- Default IP is first non-localhost network interface. Default is port 6443 or 443
+ 
+
+* Service account 
+
+- When you create a pod, if you do not specify a service account, it is automatically assigned the default service account in the same namespace. 
+
+- You can access the API from inside a pod using automatically mounted service account credentials
+
+- The API permissions of the service account depend on the authorization plugin and policy in use.
+
+* Service account.. 
+
+- Every namespace has a default service account resource called default.
+
+    kubectl get serviceAccounts
+    NAME      SECRETS    AGE
+    default   1          1d
+
+* Create service account
+
+    kubectl apply -f - <<EOF
+    apiVersion: v1
+    kind: ServiceAccount
+    metadata:
+    name: build-robot
+    EOF
+
+- To use a non-default service account, set the spec.serviceAccountName field of a pod to the name of the service account you wish to use.
+
+- The service account has to exist at the time the pod is created, or it will be rejected.
+
+- You cannot update the service account of an already created pod.
+
+* RBAC Authorization
+
+- Role-based access control (RBAC) is a method of regulating access based on the roles.
+
+Role and ClusterRole
+
+- a role contains rules that represent a set of permissions.
+
+- Permissions are purely additive (there are no “deny” rules).
+
+- A role can be defined within a namespace with a Role, or cluster-wide with a ClusterRole.
+
+* Role
+
+.code src/auth/01-role.yaml
+
+- Role in the “default” namespace that can be used to grant read access to pods
+
+* Cluster role 
+
+.code src/auth/02-cluster-role.yaml 
+
+- clusterRole can be used to grant read access to secrets. 
+
+* RoleBinding
+
+- A role binding grants the permissions defined in a role to a user or set of users.
+
+- Role binding holds a list of subjects (users, groups, or service accounts), and a reference to the role being granted. 
+
+* RoleBinding
+
+.code src/auth/03-role-binding.yaml 
+
+- A RoleBinding may also reference a ClusterRole to grant the permissions to namespaced resources defined in the ClusterRole within the RoleBinding’s namespace. 
+
+- This allows administrators to define a set of common roles for the entire cluster, then reuse them within multiple namespaces.
+
+* ClusterRoleBinding
+
+- ClusterRoleBinding may be used to grant permission at the cluster level and in all namespaces.
+
+.code src/auth/04-cluster-role-binding.yaml 
+
+* Referring to Resources
+
+.code src/auth/05-resources.yaml 
+
+- pods is the namespaced resource, and log is a subresource of pods. 
+
+- use a slash to delimit the resource and subresource.
+
+* Referring to Resources instance
+
+- Resources can also be referred to by name.
+
+- verbs can be restricted to individual instances of a resource. 
+
+.code src/auth/06-resource-instance.yaml
+
+* Aggregated ClusterRoles
+
+- ClusterRoles can be created by combining other ClusterRoles using an aggregationRule.
+
+.code src/auth/07-aggregate.yaml
+
+* Aggregated ClusterRoles
+
+.code src/auth/07-aggregate01.yaml
+
+* Aggregated ClusterRoles..
+
+.code src/auth/07-aggregate02.yaml
+
+- ClusterRoles let the “admin” and “edit” default roles manage the custom resource “CronTabs”
+
+* Aggregated ClusterRoles..
+
+.code src/auth/07-aggregate03.yaml
+
+- ClusterRoles let "view" role perform read-only actions on the resource.
+
+* Role Examples
+
+- Allow reading the resource “pods” in the core API group:
+
+    rules:
+    - apiGroups: [""]
+      resources: ["pods"]
+      verbs: ["get", "list", "watch"]
+
+- Allow reading/writing “deployments” in both the “extensions” and “apps” API groups:
+
+    rules:
+    - apiGroups: ["extensions", "apps"]
+      resources: ["deployments"]
+      verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+
+* Role Examples...
+
+- Allow reading “pods” and reading/writing “jobs”:
+
+    rules:
+    - apiGroups: [""]
+      resources: ["pods"]
+      verbs: ["get", "list", "watch"]
+    - apiGroups: ["batch", "extensions"]
+      resources: ["jobs"]
+      verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+
+- Allow reading a ConfigMap named “my-config” (must be bound with a RoleBinding to limit to a single ConfigMap in a single namespace): 
+
+    rules:
+    - apiGroups: [""]
+      resources: ["configmaps"]
+      resourceNames: ["my-config"]
+      verbs: ["get"]
+
+* Role Examples...
+
+- Allow reading the resource “nodes” in the core group (because a Node is cluster-scoped, this must be in a ClusterRole bound with a ClusterRoleBinding to be effective):
+
+    rules:
+    - apiGroups: [""]
+      resources: ["nodes"]
+      verbs: ["get", "list", "watch"]
+
+- Allow “GET” and “POST” requests to the non-resource endpoint “/healthz” and all subpaths (must be in a ClusterRole bound with a ClusterRoleBinding to be effective):
+
+    rules:
+    - nonResourceURLs: ["/healthz", "/healthz/*"] # '*' in a nonResourceURL is a suffix glob match
+    verbs: ["get", "post"]
+
+* Subjects
+
+- A RoleBinding or ClusterRoleBinding binds a role to subjects. 
+
+- Subjects can be groups, users or service accounts.
+
+- Users are represented by strings. “bob@example.com" 
+
+- prefix "system": is reserved for Kubernetes system use
+
+- Groups, are represented as strings.
+
+- Service Accounts have usernames with the "system:serviceaccount:" prefix and belong to groups with the "system:serviceaccounts:" prefix.
+
+* Subjects examples... 
+
+    subjects:
+    - kind: User
+      name: "alice@example.com"
+      apiGroup: rbac.authorization.k8s.io
+
+    subjects:
+    - kind: Group
+      name: "frontend-admins"
+      apiGroup: rbac.authorization.k8s.io
+
+    subjects:
+    - kind: ServiceAccount
+      name: default
+      namespace: kube-system
+
+* Subjects examples... 
+
+- For all service accounts in the “qa” namespace:
+
+    subjects:
+    - kind: Group
+      name: system:serviceaccounts:qa
+      apiGroup: rbac.authorization.k8s.io
+
+- For all service accounts everywhere:
+
+    subjects:
+    - kind: Group
+      name: system:serviceaccounts
+      apiGroup: rbac.authorization.k8s.io
+
+* Subjects examples... 
+
+- For all authenticated users
+
+    subjects:
+    - kind: Group
+      name: system:authenticated
+      apiGroup: rbac.authorization.k8s.io
+
+- For all unauthenticated users
+
+    subjects:
+    - kind: Group
+      name: system:unauthenticated
+      apiGroup: rbac.authorization.k8s.io
+
+- For all users
+
+    subjects:
+    - kind: Group
+      name: system:authenticated
+      apiGroup: rbac.authorization.k8s.io
+    - kind: Group
+      name: system:unauthenticated
+      apiGroup: rbac.authorization.k8s.io
+
+
+* Default ClusterRole and ClusterRoleBinding
+
+- API servers create a set of default ClusterRole and ClusterRoleBinding objects. Many of these are system: prefixed, which indicates that the resource is “owned” by the infrastructure. 
+
+- All of the default cluster roles and rolebindings are labeled with kubernetes.io/bootstrapping=rbac-defaults
+
+- Default role bindings authorize unauthenticated and authenticated users to read API information that is deemed safe to be publicly accessible
+
+- To disable anonymous unauthenticated access add --anonymous-auth=false to the API server configuration.
+
+- To view the configuration of these roles via kubectl run:
+
+    kubectl get clusterroles system:discovery -o yaml
+
+* Role grantor
+
+.code src/auth/08-role-grantor.yaml  /START1 OMIT/,/END1 OMIT/
+ 
+* Role grantor...
+
+.code -edit src/probes/08-role-grantor.yaml  /START2 OMIT/,/END2 OMIT/
+
+* Role grantor using commands
+
+- Grant the admin ClusterRole to a user named “bob” in the namespace “acme”
+
+    kubectl create rolebinding bob-admin-binding --clusterrole=admin 
+        --user=bob --namespace=acme
+
+- Grant the view ClusterRole to a service account named “myapp” in the namespace “acme”:
+
+    kubectl create rolebinding myapp-view-binding --clusterrole=view 
+        --serviceaccount=acme:myapp --namespace=acme
+
+* Role grantor using commands...
+
+- Grant the cluster-admin ClusterRole to a user named “root” across the entire cluster:
+
+    kubectl create clusterrolebinding root-cluster-admin-binding 
+        --clusterrole=cluster-admin --user=root
+
+- Grant the system:node ClusterRole to a user named “kubelet” across the entire cluster:
+
+    kubectl create clusterrolebinding kubelet-node-binding 
+        --clusterrole=system:node --user=kubelet
+
+- Grant the view ClusterRole to a service account named “myapp” in the namespace “acme” across the entire cluster:
+
+    kubectl create clusterrolebinding myapp-view-binding 
+        --clusterrole=view --serviceaccount=acme:myapp
+
+* Service Account Permissions
+
+- Default RBAC policies grant scoped permissions to control-plane components, nodes, and controllers, but grant no permissions to service accounts outside the kube-system namespace (beyond discovery permissions given to all authenticated users).
+
+- You need to grant particular roles to particular service accounts as needed. 
+
+- This requires the application to specify a serviceAccountName in its pod spec, and for the service account to be created (via the API, application manifest, kubectl create serviceaccount, etc.).
+
+- Grant read-only permission within “my-namespace” to the “my-sa” service account:
+
+    kubectl create rolebinding my-sa-view \
+        --clusterrole=view \
+        --serviceaccount=my-namespace:my-sa \
+        --namespace=my-namespace
+
+* Service Account Permissions...
+
+- Grant read-only permission within “my-namespace” to the “default” service account:
+
+    kubectl create rolebinding default-view \
+        --clusterrole=view \
+        --serviceaccount=my-namespace:default \
+        --namespace=my-namespace
+
+- Many add-ons currently run as the “default” service account in the kube-system namespace. To allow those add-ons to run with super-user access, grant cluster-admin permissions to the “default” service account in the kube-system namespace.
+
+    kubectl create clusterrolebinding add-on-cluster-admin \
+        --clusterrole=cluster-admin \
+        --serviceaccount=kube-system:default
+
+* Service Account Permissions...
+
+- Grant read-only permission within “my-namespace” to all service accounts in that namespace:
+
+    kubectl create rolebinding serviceaccounts-view \
+        --clusterrole=view \
+        --group=system:serviceaccounts:my-namespace \
+        --namespace=my-namespace
+
+* Admission Controller 
+
+- An admission controller intercepts requests to the Kubernetes API server prior to persistence of the object, but after the request is authenticated and authorized.
+
+- Admission controllers may be “validating”, “mutating”, or both.
+
+- Mutating controllers may modify the objects they admit.
+
+- If any of the controllers reject the request, the entire request is rejected immediately and an error is returned to the end-user.
+
+* Admission Controller 
+
+- The Kubernetes API server flag enable-admission-plugins takes a comma-delimited list of admission control plugins 
+
+    kube-apiserver --enable-admission-plugins=NamespaceLifecycle,LimitRanger ...
+
+    kube-apiserver -h | grep enable-admission-plugins
+    NamespaceLifecycle,LimitRanger,ServiceAccount,PersistentVolumeLabel,
+    DefaultStorageClass,DefaultTolerationSeconds,MutatingAdmissionWebhook,
+    ValidatingAdmissionWebhook,ResourceQuota,Priority
+
+* Admission Controller plugins
+
+AlwaysPullImages
+
+- Every new Pod to force the image pull policy to Always. 
+
+- This is useful in a multitenant cluster so that users can be assured that their private images can only be used by those who have the credentials to pull them.
+
+DefaultStorageClass
+
+- This admission controller observes creation of PersistentVolumeClaim objects that do not request any specific storage class and automatically adds a default storage class to them.
+

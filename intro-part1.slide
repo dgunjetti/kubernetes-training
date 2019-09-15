@@ -1,0 +1,257 @@
+Introduction to Kubernetes
+
+Deepak Gunjetti
+Software Architect @ Andcloud
+deepak@andcloud.io
+@dgunjetti
+
+* Introduction
+
+- Kubernetes is a container orchestrator, that automates the deployment and life-cycle management of containerized applications. 
+
+- It orchestrates compute, storage, networking for workloads.
+
+* Abstracts the underlying infrastructure
+
+- It abstracts the cluster implementation from workloads
+
+.image img/kubernetes01.png
+
+- we can deploy on AWS, GCP, Azure or on-premise, the application remains consistent across the deployments.
+
+* Kubernetes components
+
+- It consists of master node and sets of worker nodes. 
+
+- Control plane runs on master node, applications runs on worker nodes.
+
+* Components..
+
+.image img/components.png
+
+* Components..
+
+- API server is the policy engine that sits in front of etcd
+
+- etcd is a highly consistent distributed database that holds the cluster state. 
+
+- Controller manager is set control loops that reconcile the actual state in cluster to desired state stored in database.
+
+- Scheduler assigns workloads to appropriate worker nodes.
+
+- Kubelet is agent that runs on every node and makes sure that container are running and healthy.
+
+- Container runtime is responsible to run containers, Kubernetes supports docker, rkt, containerd or any OCI compliant implementation.
+
+* Kubernetes Primitives
+
+* POD
+
+* POD
+
+- Basic unit deployment in kubernetes is a Pod.
+
+- Pod is a wrapper over container, it represents an instance of application. 
+
+- It encapsulates container, storage/network, and other options that govern how container is suppose to run.
+
+- Pod can consist of single container or set of tightly coupled containers that share resources. All the containers in the Pod land on same node.
+
+* Networking
+
+-  Each pod has an IP address in a flat shared networking space that has full communication with other physical computers and pods across the network.
+
+- Containers within a pod share an IP address and port space, and can talk to each other via localhost.
+
+- The hostname is set to the pod’s Name for the application containers within the pod.
+
+* Storage
+
+- A Pod can specify a set of shared storage Volumes. 
+
+- All containers in the Pod can access the shared volumes, allowing those containers to share data. 
+
+- Volumes also allow persistent data in a Pod to survive in case one of the containers within needs to be restarted.
+
+* Pod example
+
+- Example of co-located containers can be, one container serving html web pages to outside world and a side-car container populating those html web pages. Both the container share a storage volume. One container writes to volume other container reads from it.
+
+* Working with Pods
+
+- When a Pod gets created (directly by you, or indirectly by a Controller), it is scheduled to run on a Node in your cluster. The Pod remains on that Node until the process is terminated, the pod object is deleted, the Pod is evicted for lack of resources, or the Node fails.
+
+* Pod Templates
+
+.code -edit src/workloads/pod01.yaml 
+
+* Pod Lifecycle
+
+- Pending: The Pod has been accepted by the Kubernetes system, but one or more of the Container images has not been created. This includes time before being scheduled as well as time spent downloading images over the network, which could take a while.
+
+- Running: The Pod has been bound to a node, and all of the Containers have been created.
+
+- Succeeded: All Containers in the Pod have terminated in success, and will not be restarted.
+
+- Failed: All Containers in the Pod have terminated, and at least one Container has terminated in failure.  That is, the Container either exited with non-zero status.
+
+- Unknown: For some reason the state of the Pod could not be obtained, typically due to an error in communicating with the host of the Pod.
+
+* Restart policy
+
+- A PodSpec has a restartPolicy field with possible values Always, OnFailure, and Never. The default value is Always. 
+
+- restartPolicy only refers to restarts of the Containers by the kubelet on the same node.
+
+- Exited Containers that are restarted by the kubelet are restarted with an exponential back-off delay (10s, 20s, 40s …) capped at five minutes
+
+- once bound to a node, a Pod will not rebound to another node. A higher level contruct called controllers are used to reschedule the pods on another node in case of node failures.
+
+* Controllers 
+
+- Use a Job for Pods that are expected to terminate, for example, batch computations. Jobs are appropriate only for Pods with restartPolicy equal to OnFailure or Never.
+
+- Use a ReplicationController, ReplicaSet, or Deployment for Pods that are not expected to terminate, for example, web servers. ReplicationControllers are appropriate only for Pods with a restartPolicy of Always.
+
+- Use a DaemonSet for Pods that need to run one per machine, because they provide a machine-specific system service.
+
+* Init Containers
+
+- init containers are specialized containers that run before app containers in a Pod. Init containers can contain utilities or setup scripts not present in an app image. 
+
+- Init containers always run to completion.
+
+- Each init container must complete successfully before the next one starts.
+
+- If a Pod’s init container fails, Kubernetes repeatedly restarts the Pod until the init container succeeds. 
+
+* Init containers in use
+
+    src/workloads/initcontainer01.yaml
+
+* Pod Presets 
+
+- PodPresets are objects for injecting certain information into pods at creation time. The information can include secrets, volumes, volume mounts, and environment variables.
+
+- Kubernetes provides an admission controller (PodPreset) which, when enabled, applies Pod Presets to incoming pod creation requests. 
+
+* Pod Presets...
+
+- When a pod creation request occurs, the system does the following:
+
+- Retrieve all PodPresets available for use.
+
+- Check if the label selectors of any PodPreset matches the labels on the pod being created.
+
+- Attempt to merge the various resources defined by the PodPreset into the Pod being created.
+
+- On error, throw an event documenting the merge error on the pod, and create the pod without any injected resources from the PodPreset.
+
+* Pod Presets...
+
+- Create the PodPreset
+
+    kubectl apply -f https://k8s.io/examples/podpreset/preset.yaml
+
+    kubectl get podpreset
+
+- Create a pod
+
+    kubectl create -f https://k8s.io/examples/podpreset/pod.yaml
+
+    kubectl get pods
+
+- Pod spec after admission controller:
+
+    kubectl get pod website -o yaml
+
+* Disruptions
+
+* Mitigate involuntary disruptions
+
+- Replicate your application 
+
+- spread applications across racks and across zones.
+
+* Voluntary disruptions 
+
+- software upgrades / auto scaling can cause voluntary disruptions. 
+
+- Kubernetes offers features to help run highly available applications at the same time as frequent voluntary disruptions.
+
+* PodDisruptionBudget (PDB)
+
+- A PDB limits the number of pods of a replicated application that are down simultaneously from voluntary disruptions.
+
+- When a cluster administrator wants to drain a node they use the kubectl drain
+
+- kubectl drain tries to evict all the pods on the machine. It uses Eviction API instead of directly deleting pods.
+
+- The eviction request may be temporarily rejected, if the number of pods falls below certain percentage of total.
+
+- PDBs cannot prevent involuntary disruptions from occurring, but they do count against the budget.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+* Replicaset Controller
+
+- Relicaset controller takes a count, and template to create Pods.
+
+- It makes sure specified number of Pods are always running on the cluster. If any node goes down, Pods are rescheduled on different node.
+
+- Replicaset is managed by higher level abstraction called Deployment.
+
+* Deployment
+
+- Deployment manages the rolling out of application. When a new version of application is to be rolled out, it creates a new Replicaset. It rolls down the Pods created by old Replicaset and rolls up the Pods on new Replicaset.
+
+* StatefulSets
+
+- StatefulSets attaches persistent storage with the instance of application. 
+
+- It provides guarantee of ordering and provides unique ID to Pod.
+
+- It is used by applications that requires stable network ID, persistent storage, graceful deployment and termination.
+
+- Storage is either dynamically provisioned or pre-provisioned by Admin. 
+
+- Network ID for the Pods is provided by Headless service.
+
+* DaemonSet
+
+- DaemonSet ensures that a Pod runs on every node in cluster. 
+
+- Examples of these kinds of Pods are log collectors and node monitoring agents.
+
+* Jobs
+
+- Jobs are about tasks that need to run to completion. 
+
+- Job need to run till it is successful.
+
+* Cronjob
+
+- Cronjob creates Jobs based on schedule.
+
+    NAME                               READY     STATUS    RESTARTS   AGE
+    curl-deployment-1515033274-1410r   1/1       Running   0          1m
+    $ kubectl exec curl-deployment-1515033274-1410r -- 
+    curl https://my-nginx --cacert /etc/nginx/ssl/nginx.crt
+    ...
+    <title>Welcome to nginx!</title>
+
+
