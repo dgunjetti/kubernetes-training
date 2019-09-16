@@ -166,3 +166,13 @@ deepak@andcloud.io
 * Network policy
 
 
+
+* Network Policy
+
+- limit access to the nginx service so that only pods with the label access: true can query it. 
+
+.code src/networkpolicy/01-limit-access.yaml 
+
+$ kubectl run busybox --rm -ti --labels="access=true" --image=busybox /bin/sh
+/ # wget --spider --timeout=1 nginx
+Connecting to nginx (10.100.0.16:80)

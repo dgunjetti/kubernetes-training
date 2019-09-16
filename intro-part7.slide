@@ -1,0 +1,181 @@
+Introduction to Kubernetes
+
+Deepak Gunjetti
+Software Architect @ Andcloud
+deepak@andcloud.io
+@dgunjetti
+
+* Secrets
+
+* Secrets
+
+- Objects of type secret are intended to hold sensitive information, such as passwords, OAuth tokens, and ssh keys. 
+
+- Users can create secrets, and the system also creates some secrets.
+
+- secret needs to be created before any pods that depend on it.
+
+- Secret API objects reside in a namespace. They can only be referenced by pods in that same namespace.
+
+- Individual secrets are limited to 1MB in size. This is to discourage creation of very large secrets which would exhaust apiserver and kubelet memory. 
+
+
+* Built-in Secrets
+
+- Service Accounts Automatically Create and Attach Secrets with API Credentials
+
+- Kubernetes automatically creates secrets which contain credentials for accessing the API and it automatically modifies your pods to use this type of secret.
+
+* Creating your own Secrets
+
+  $ echo -n 'admin' > ./username.txt
+  $ echo -n '1f2d1e2e67df' > ./password.txt
+
+  $ kubectl create secret generic db-user-pass --from-file=./username.txt --from-file=./password.txt
+
+  $ kubectl get secrets
+    NAME                  TYPE                                 
+    db-user-pass          Opaque                   
+
+  $ kubectl describe secrets/db-user-pass
+    Data
+    ====
+    password.txt:    12 bytes
+    username.txt:    5 bytes
+
+* Creating a Secret Manually
+
+  $ echo -n 'admin' | base64
+  YWRtaW4=
+  $ echo -n '1f2d1e2e67df' | base64
+  MWYyZDFlMmU2N2Rm
+
+.code src/secrets/01-secret.yaml
+
+  $ kubectl create -f ./secret.yaml
+
+* Decoding a Secret
+
+  $ kubectl get secret mysecret -o yaml
+  apiVersion: v1
+  data:
+    username: YWRtaW4=
+    password: MWYyZDFlMmU2N2Rm
+  kind: Secret
+
+  $ echo 'MWYyZDFlMmU2N2Rm' | base64 --decode
+  1f2d1e2e67df
+
+* Using Secrets
+
+- Secrets can be mounted as data volumes or be exposed as environment variables to be used by a container in a pod. 
+
+.code src/secrets/02-secret.yaml 
+
+* Projection of secret keys to specific paths
+
+.code src/secrets/03-secret.yaml /START OMIT/,/END OMIT/
+
+- username secret is stored under /etc/foo/my-group/my-username file instead of /etc/foo/username
+
+* Secret files permissions
+
+- You can also specify the permission mode bits files part of a secret will have. If you don’t specify any, 0644 is used by default. 
+
+.code src/secrets/04-permissions.yaml /START OMIT/,/END OMIT/
+
+- JSON spec doesn’t support octal notation, so use the value 256 for 0400 
+
+.code src/secrets/05-permissions.yaml /START OMIT/,/END OMIT/
+
+- /etc/foo/my-group/my-username will have permission value of 0777
+
+* Consuming Secret Values from Volumes
+
+  $ ls /etc/foo/
+  username
+  password
+
+  $ cat /etc/foo/username
+  admin
+  
+  $ cat /etc/foo/password
+  1f2d1e2e67df
+
+- The secret keys appear as files and the secret values are base-64 decoded and stored inside these files. 
+
+* Mounted Secrets are updated automatically
+
+- When a secret being already consumed in a volume is updated, projected keys are eventually updated as well. Kubelet is checking whether the mounted secret is fresh on every periodic sync. 
+
+* Using Secrets as Environment Variables
+
+.code src/secrets/06-env.yaml /START OMIT/,/END OMIT/
+
+* Consuming Secret Values from Environment Variables
+
+  $ echo $SECRET_USERNAME
+  admin
+  $ echo $SECRET_PASSWORD
+  1f2d1e2e67df
+
+the secret keys appear as normal environment variables containing the base-64 decoded values of the secret data.
+
+* Pod with ssh keys
+
+  $ kubectl create secret generic ssh-key-secret \
+  --from-file=ssh-privatekey=/path/to/.ssh/id_rsa  \
+  --from-file=ssh-publickey=/path/to/.ssh/id_rsa.pub
+
+.code src/secrets/07-secret.yaml /START OMIT/,/END OMIT/
+
+pieces of the key will be available in:
+/etc/secret-volume/ssh-publickey
+/etc/secret-volume/ssh-privatekey
+
+* Pods with prod / test credentials
+
+- This example illustrates a pod which consumes a secret containing prod credentials and another pod which consumes a secret with test environment credentials.
+
+  $ kubectl create secret generic prod-db-secret \
+  --from-literal=username=produser \
+  --from-literal=password=Y4nys7f11
+
+  $ kubectl create secret generic test-db-secret \
+  --from-literal=username=testuser \
+  --from-literal=password=iluvtests
+  
+  $ kubectl create secret generic dev-db-secret \
+  --from-literal=username=devuser \
+  --from-literal=password=S\\!B\\\*d\\$zDsb
+
+* Pods with prod / test credentials
+
+.code src/secrets/08-prodtest.yaml /START OMIT/,/END OMIT/
+
+* Pods with prod / test credentials
+
+.code src/secrets/08-prodtest.yaml /START1 OMIT/,/END1 OMIT/
+
+* Pods with prod / test credentials
+
+- Both containers will have the following files present on their filesystems with the values for each container’s environment:
+/etc/secret-volume/username
+/etc/secret-volume/password
+
+- two pods differ only in one field; this facilitates creating pods with different capabilities from a common pod config template.
+
+- You could further simplify the base pod specification by using two Service Accounts: one called, say, prod-user with the prod-db-secret, and one called, say, test-user with the test-db-secret. Then, the pod spec can be shortened to.
+
+.code src/secrets/08-prodtest1.yaml /START OMIT/,/END OMIT/
+
+* Dotfiles in secret volume
+
+- In order to make piece of data ‘hidden’ (i.e., in a file whose name begins with a dot character), simply make that key begin with a dot.
+
+.code src/secrets/09-secret.yaml 
+
+* Using imagePullSecrets
+
+- An imagePullSecret is a way to pass a secret that contains a Docker (or other) image registry password to the Kubelet so it can pull a private image on behalf of your Pod.
+

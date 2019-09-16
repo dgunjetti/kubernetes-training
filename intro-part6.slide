@@ -1,0 +1,84 @@
+Introduction to Kubernetes
+
+Deepak Gunjetti
+Software Architect @ Andcloud
+deepak@andcloud.io
+@dgunjetti
+
+* TLS
+
+* TLS 
+
+- Every Kubernetes cluster has a cluster root Certificate Authority (CA). 
+
+- The CA is generally used by cluster components to validate the API server’s certificate, by the API server to validate kubelet client certificates, etc.
+
+- CA certificate bundle is distributed to every node in the cluster and is distributed as a secret attached to default service accounts.
+
+- Your application can request a certificate signing using the certificates.k8s.io API using a protocol that is similar to the ACME draft.
+
+* Trusting TLS in a Cluster
+
+- Trusting the cluster root CA from an application running as a pod usually requires some extra application configuration. 
+
+- You will need to add the CA certificate bundle to the list of CA certificates that the TLS client or server trusts. 
+
+- For example, you would do this with a golang TLS config by parsing the certificate chain and adding the parsed certificates to the Certificates field in the tls.Config struct.
+
+- The CA certificate bundle is automatically mounted into pods using the default service account at the path /var/run/secrets/kubernetes.io/serviceaccount/ca.crt.
+
+* Requesting a Certificate
+
+- create a TLS certificate for a Kubernetes service accessed through DNS.
+
+  cat <<EOF | cfssl genkey - | cfssljson -bare server
+  {
+    "hosts": [
+      "my-svc.my-namespace.svc.cluster.local",
+      "my-pod.my-namespace.pod.cluster.local",
+      "172.168.0.24",
+      "10.0.34.2"
+    ],
+    "CN": "my-pod.my-namespace.pod.cluster.local",
+    "key": {
+      "algo": "ecdsa",
+      "size": 256
+    }
+  }
+  EOF
+
+* Requesting a Certificate
+
+- Where 172.168.0.24 is the service’s cluster IP, my-svc.my-namespace.svc.cluster.local is the service’s DNS name, 10.0.34.2 is the pod’s IP and my-pod.my-namespace.pod.cluster.local is the pod’s DNS name.
+
+- This command generates two files; it generates server.csr containing the PEM encoded pkcs#10 certification request, and server-key.pem containing the PEM encoded key to the certificate that is still to be created.
+
+* Requesting a Certificate
+
+- Create a Certificate Signing Request object to send to the Kubernetes API
+
+.code src/tls/01-csr.yaml
+
+* Requesting a Certificate
+
+- Notice that the server.csr file created in step 1 is base64 encoded and stashed in the .spec.request field. 
+
+- We are also requesting a certificate with the “digital signature”, “key encipherment”, and “server auth” key usages. 
+
+- The CSR should now be visible from the API in a Pending state. You can see it by running:
+
+- kubectl describe csr my-svc.my-namespace
+
+* Approving Certificate Signing Requests
+
+  kubectl certificate approve
+
+* Download the Certificate and Use It
+
+  kubectl get csr my-svc.my-namespace -o jsonpath='{.status.certificate}' \
+    | base64 --decode > server.crt
+
+- Now you can use server.crt and server-key.pem as the keypair to start your HTTPS server.
+
+
+
