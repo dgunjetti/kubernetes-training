@@ -1,7 +1,7 @@
-Introduction to Kubernetes
+Services
 
 Deepak Gunjetti
-Software Architect @ Andcloud
+Solution Architect @ Andcloud
 deepak@andcloud.io
 @dgunjetti
 
@@ -13,7 +13,7 @@ deepak@andcloud.io
 
 - Services groups the Pods providing the same functionality and provides them a virtual IP address and ports. 
 
-- Workloads can access these Pods using virtual IP address and port, connection is routed to one of the pod backing the service.
+- Workloads can access these Pods using virtual IP address and port, kube-proxy will load balance the traffic to one of the backing pod.
 
 - The set of pods targeted by service is determined by Label selector.
 
@@ -246,8 +246,6 @@ deepak@andcloud.io
 
 - Maps the service to the contents of the externalName field (e.g. foo.bar.example.com), by returning a CNAME record with its value.
 
-* External name
-
 - If you want to access a public API, you can define a service that points to it.
 
 .code -edit src/services/svc06.yaml 
@@ -345,8 +343,8 @@ deepak@andcloud.io
 * Securing the Service
 
     #create a public private key pair
-    openssl req -x509 -nodes -days 365 -newkey rsa:2048 
-    -keyout /tmp/nginx.key -out /tmp/nginx.crt 
+    openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+    -keyout /tmp/nginx.key -out /tmp/nginx.crt \
     -subj "/CN=my-nginx/O=my-nginx"
 
     #convert the keys to base64 encoding
