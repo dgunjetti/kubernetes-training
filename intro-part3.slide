@@ -44,14 +44,7 @@ deepak@andcloud.io
 
 - specifying default backend with no rules.
 
-  apiVersion: networking.k8s.io/v1beta1
-  kind: Ingress
-  metadata: 
-      name: test-ingress
-  spec: 
-      backend:
-          serviceName: testsvc
-          servicePort: 80
+.code src/ingress/02-single-service.yaml 
 
 *  Single service ingress
 
@@ -67,17 +60,7 @@ deepak@andcloud.io
 
 - Ingress allows you to keep the number of load balancer to minimum.
 
-
-  http:
-      paths:
-      - path: /foo
-      backend:
-          serviceName: service1
-          servicePort: 4200
-      - path: /bar
-      backend:
-          serviceName: service2
-          servicePort: 8080
+.code src/ingress/03-fan-out.yaml  /START OMIT/,/END OMIT/
 
 - The Ingress controller provisions an load balancer that satisfies the Ingress, as long as the services (s1, s2) exist. 
 
@@ -91,19 +74,7 @@ deepak@andcloud.io
 
 * Name based virtual hosting..
 
-  rules:
-  - host: foo.bar.com
-    http:
-      paths:
-      - backend:
-          serviceName: service1
-          servicePort: 80
-  - host: bar.foo.com
-    http:
-      paths:
-      - backend:
-          serviceName: service2
-          servicePort: 80
+.code src/ingress/04-virtualhosting.yaml  /START OMIT/,/END OMIT/
 
 
 - If you create an Ingress resource without any hosts defined in the rules, then any web traffic to the IP address of your Ingress controller can be matched without a name based virtual host being required.
@@ -114,39 +85,13 @@ deepak@andcloud.io
 
 - Ingress controller to secure the channel from the client to the load balancer using TLS. 
 
-  apiVersion: v1
-  kind: Secret
-  metadata:
-    name: testsecret-tls
-    namespace: default
-  data:
-    tls.crt: base64 encoded cert
-    tls.key: base64 encoded key
-  type: kubernetes.io/tls
+.code src/ingress/05-tls.yaml  /START OMIT/,/END OMIT/
 
 * TLS
 
-  apiVersion: networking.k8s.io/v1beta1
-  kind: Ingress
-  metadata:
-    name: tls-example-ingress
-  spec:
-    tls:
-    - hosts:
-      - sslexample.foo.com
-      secretName: testsecret-tls
-    rules:
-      - host: sslexample.foo.com
-        http:
-          paths:
-          - path: /
-            backend:
-              serviceName: service1
-              servicePort: 80
-
+.code src/ingress/05-tls.yaml  /START1 OMIT/,/END1 OMIT/
 
 - certificate is created with CN for sslexample.foo.com.
-
 
 * Ingress Controllers
 
@@ -165,9 +110,103 @@ deepak@andcloud.io
 
 * Network policy
 
+* Network policy
 
+- NetworkPolicy resources use labels to select pods and define rules which specify what traffic is allowed to the selected pods.
 
-* Network Policy
+- Network policies are implemented by the network plugin, so you must be using a networking solution which supports NetworkPolicy.
+
+- By default, pods are non-isolated; they accept traffic from any source.
+
+- Pods become isolated by having a NetworkPolicy that selects them. 
+
+* Example
+
+.code src/networkpolicy/02-policy.yaml /START OMIT/,/END OMIT/
+
+* Example...
+
+.code src/networkpolicy/02-policy.yaml /START1 OMIT/,/END1 OMIT/
+
+* Example...
+
+.code src/networkpolicy/02-policy.yaml /START2 OMIT/,/END2 OMIT/
+
+* podSelector
+
+- podSelector selects the grouping of pods to which the policy applies.
+
+- The example policy selects pods with the label “role=db”. 
+
+- An empty podSelector selects all pods in the namespace.
+
+* policyTypes
+
+- policyTypes field indicates whether or not the given policy applies to ingress traffic to selected pod, egress traffic from selected pods, or both.
+
+- If no policyTypes are specified on a NetworkPolicy then by default Ingress
+
+* ingress
+
+- include a list of whitelist ingress rules. 
+
+- Each rule allows traffic which matches both the from and ports sections. 
+
+* from
+
+- The example policy contains a single rule, which matches traffic on a single port, from one of three sources, ipBlock, namespaceSelector, podSelector.
+
+- podSelector: This selects particular Pods in the same namespace as the NetworkPolicy
+
+- namespaceSelector: Selects particular namespaces for which all Pods should be allowed 
+
+- ipBlock: selects particular IP CIDR ranges to allow 
+
+* from..
+
+- namespaceSelector and podSelector: selects particular Pods within particular namespaces.
+
+  ...
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          user: alice
+      podSelector:
+        matchLabels:
+          role: client
+  ...
+
+- allowing connections from Pods with the label role=client in namespaces with the label user=alice. 
+
+* from..
+
+  ...
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          user: alice
+    - podSelector:
+        matchLabels:
+          role: client
+  ...
+
+- allows connections from Pods in the local Namespace with the label role=client, or from any Pod in any namespace with the label user=alice.
+
+- use "kubectl describe" to see how Kubernetes has interpreted the policy.
+
+* Default deny all ingress traffic
+
+.code src/networkpolicy/03-default.yaml 
+
+* Default allow all ingress traffic
+
+.code src/networkpolicy/04-default.yaml 
+
+- replace ingress with egress for default egress policy.
+
+* Limit access 
 
 - limit access to the nginx service so that only pods with the label access: true can query it. 
 

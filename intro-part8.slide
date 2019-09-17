@@ -1,0 +1,288 @@
+Storage
+
+Deepak Gunjetti
+Solution Architect @ Andcloud
+deepak@andcloud.io
+@dgunjetti
+
+* Storage
+
+* Volume - Attaching disk storage to containers 
+
+- The Kubernetes Volume provides abstraction for underlying storage that solves below problems..
+  
+- On-disk files in a Container are ephemeral, when a Container crashes, kubelet will restart it, but the files will be lost - the Container starts with a clean state. 
+
+- When running Containers together in a Pod it is often necessary to share files between those Containers. 
+
+* Volume..
+
+- To use a volume, a Pod specifies what volumes to provide for the Pod (the .spec.volumes field) and where to mount those into Containers (the .spec.containers.volumeMounts field).
+
+- A process in a container sees a filesystem view composed from their Docker image and volumes. The Docker image is at the root of the filesystem hierarchy, and any volumes are mounted at the specified paths within the image. 
+
+- If a pod contains multiple containers, the volume can be used by all of them at once.
+
+* Volumes plugins
+
+- Remote Storage
+  
+  GCE Persistent disk, AWS EBS, Azure file system, many others...
+
+- Ephemeral Storage
+  
+  EmptyDir, Secret, ConfigMap, DownwardAPI 
+
+* Volume plugin - emptyDir
+
+- Temp scratch file space on host file system
+
+- An emptyDir volume is first created when a Pod is assigned to a Node, and exists as long as that Pod is running on that node.
+
+- When a Pod is removed from a node for any reason, the data in the emptyDir is deleted forever.
+
+- emptyDir volume is especially useful for sharing files between containers running in the same pod. 
+
+- By default, emptyDir volumes are stored on whatever medium is backing the node - that might be disk or SSD or network storage
+
+- you can set the emptyDir.medium field to "Memory" to tell Kubernetes to mount a tmpfs.
+
+* emptyDir 
+
+.code src/storage/02-emptyDir.yaml
+
+
+* hostpath
+
+- A hostPath volume mounts a file or directory from the host node’s filesystem into your Pod.
+
+- Certain system-level pods do need to either read the node’s files or use the node’s filesystem to access the node’s devices through the filesystem. 
+
+- The files or directories created on the underlying hosts are only writable by root. You either need to run your process as root in a privileged Container or modify the file permissions on the host to be able to write to a hostPath volume.
+
+* Example 
+
+- To access Docker internals; use a hostPath of /var/lib/docker
+
+- cAdvisor in a Container use a hostPath of /sys
+
+  $ kubectl describe po fluentd-kubia-4ebc2f1e-9a3e --namespace kube-system
+  Volumes:
+  varlog:
+    Type:       HostPath (bare host directory volume)
+    Path:       /var/log
+  varlibdockercontainers:
+    Type:       HostPath (bare host directory volume)
+    Path:       /var/lib/docker/containers
+
+* hostpath
+
+.code src/storage/04-hostpath.yaml
+
+* Persistent storage
+
+- When an application running in a pod needs to persist data to disk and have that same data available even when the pod is rescheduled to another node
+
+- Because this data needs to be accessible from any cluster node,  it must be stored on some type of network-attached storage (NAS).
+
+
+
+* awsElasticBlockStore
+
+- awsElasticBlockStore volume mounts an Amazon Web Services (AWS) EBS Volume into your Pod. 
+
+- when a Pod is removed, the contents of an EBS volume are preserved and the volume is merely unmounted. 
+
+- This means that an EBS volume can be pre-populated with data, and that data can be “handed off” between Pods.
+
+- instances need to be in the same region and availability-zone as the EBS volume
+
+- EBS only supports a single EC2 instance mounting a volume
+
+  aws ec2 create-volume --availability-zone=eu-west-1a --size=10 \
+  --volume-type=gp2
+
+* awsElasticBlockStore
+
+.code src/storage/01-ebs.yaml
+
+* gcePersistentDisk
+
+- A feature of PD is that they can be mounted as read-only by multiple consumers simultaneously. This means that you can pre-populate a PD with your dataset and then serve it in parallel from as many Pods as you need. 
+
+  gcloud compute disks create --size=500GB --zone=us-central1-a my-data-disk
+
+.code src/storage/03-gcp.yaml
+
+* gcePersistentDisk - mongodb
+
+  $ gcloud container clusters list
+  NAME   ZONE            MASTER_VERSION  MASTER_IP       ...
+  kubia  europe-west1-b  1.2.5           104.155.84.13
+
+  $ gcloud compute disks create --size=1GiB --zone=europe-west1-b mongodb
+
+.code src/storage/03-gcp-mongo.yaml
+
+* gcePersistentDisk - mongodb
+
+$ kubectl exec -it mongodb mongo
+  > use mystore
+  > db.foo.insert({name:'foo'})
+  > db.foo.find()
+
+$ kubectl delete pod mongodb
+
+$ kubectl create -f mongodb-pod-gcepd.yaml
+
+$ kubectl exec -it mongodb mongo
+  > use mystore
+  > db.foo.find()
+
+* PersistentVolumes and PersistentVolumeClaims
+
+* PV and PVC
+
+- To enable apps to request storage in a Kubernetes cluster without having to deal with infrastructure specifics, two new resources were introduced. They are Persistent-Volumes and PersistentVolumeClaims.
+
+.image img/storage.png
+
+* PV and PVC
+
+- When creating the PersistentVolume, the admin specifies its size and the access modes it supports.
+
+- When a cluster user needs to use persistent storage in one of their pods, they first create a PersistentVolumeClaim manifest, specifying the minimum size and the access mode they require.
+
+- The user then submits the PersistentVolumeClaim manifest to the Kubernetes API server, and Kubernetes finds the appropriate PersistentVolume and binds the volume to the claim.
+
+- The PersistentVolumeClaim can then be used as one of the volumes inside a pod. Other users cannot use the same PersistentVolume until it has been released by deleting the bound PersistentVolumeClaim.
+
+* Configure a Pod to Use a PersistentVolume for Storage
+
+- Kubernetes supports hostPath for development and testing on a single-node cluster. A hostPath PersistentVolume uses a file or directory on the Node to emulate network-attached storage.
+
+.code src/storage/05-pv.yaml
+
+* Create PV.. 
+
+  kubectl apply -f https://k8s.io/examples/pods/storage/pv-volume.yaml
+
+  $ kubectl get pv task-pv-volume
+  NAME             CAPACITY   ACCESSMODES   RECLAIMPOLICY   STATUS
+  task-pv-volume   10Gi       RWO           Retain          Available
+
+* Create a PVC..
+
+- Requests a volume of at least three gibibytes that can provide read-write access.
+
+.code src/storage/05-pvc.yaml
+
+* Create a PVC..
+
+  $ kubectl apply -f https://k8s.io/examples/pods/storage/pv-claim.yaml
+
+  $ kubectl get pv task-pv-volume
+  NAME             CAPACITY   ACCESSMODES   RECLAIMPOLICY   STATUS
+  task-pv-volume   10Gi       RWO           Retain          Retain
+
+  $ kubectl get pvc task-pv-claim
+  NAME            STATUS    VOLUME           CAPACITY   ACCESSMODES   STORAGECLASS 
+  task-pv-claim   Bound     task-pv-volume   10Gi       RWO           manual      
+
+* Create a Pod
+
+.code src/storage/05-pod.yaml
+
+- Pod’s configuration file specifies a PersistentVolumeClaim
+
+* Access control
+
+- Storage configured with a group ID (GID) allows writing only by Pods using the same GID. Mismatched or missing GIDs cause permission denied errors.
+
+- To reduce the need for coordination with users, an administrator can annotate a PersistentVolume with a GID. Then the GID is automatically added to any Pod that uses the PersistentVolume.
+
+.code src/storage/06-pv.yaml
+
+- When a Pod consumes a PersistentVolume that has a GID annotation, the annotated GID is applied to all Containers in the Pod
+
+* Storage class
+
+- A StorageClass provides a way for administrators to describe the “classes” of storage they offer. 
+
+- Different classes might map to quality-of-service levels, or to backup policies, or to arbitrary policies determined by the cluster administrators. 
+
+- Each StorageClass contains the fields provisioner, parameters, and reclaimPolicy, which are used when a PersistentVolume belonging to the class needs to be dynamically provisioned.
+
+
+* Storage class..
+
+.code src/storage/07-storageclass.yaml
+
+* Provisioner
+
+- Determines what volume plugin is used for provisioning PVs. AWS EBS, Azure File, Azure Disk, OpenStack Cinder, GCE PD, Glusterfs
+
+* Reclaim Policy
+
+- Reclaim Policy can be either Delete or Retain, default is Delete.
+
+* Volume Binding Mode
+
+- By default, the Immediate mode indicates that volume binding and dynamic provisioning occurs once the PersistentVolumeClaim is created.
+
+- WaitForFirstConsumer mode will delay the binding and provisioning of a PersistentVolume until a Pod using the PersistentVolumeClaim is created. PersistentVolumes will be selected or provisioned conforming to the topology that is specified by the Pod’s scheduling constraints. 
+
+* Restrict the topology of provisioned volumes
+
+.code src/storage/08-zone.yaml
+
+* Parameters
+
+type: io1, gp2, sc1, st1. See AWS docs for details. Default: gp2.
+
+iopsPerGB: only for io1 volumes. I/O operations per second per GiB. AWS volume plugin multiplies this with size of requested volume to compute IOPS of the volume and caps it at 20 000 IOPS
+ 
+fsType: Default: "ext4".
+
+encrypted: denotes whether the EBS volume should be encrypted or not. Valid values are "true" or "false". 
+
+* Listing storage classes
+
+  $ kubectl get sc
+  NAME                 TYPE
+  fast                 kubernetes.io/gce-pd
+  standard (default)   kubernetes.io/gce-pd
+
+* Examining the default storage class
+
+  $ kubectl get sc standard -o yaml
+  ...
+  parameters:                         
+    type: pd-standard                                           
+  provisioner: kubernetes.io/gce-pd 
+  ...
+
+- Creating a PersistentVolumeClaim without specifying a storage class, provisions GCE Persistent Disk of type pd-standard.
+
+* Dynamic Volume Provisioning
+
+- Dynamic volume provisioning allows storage volumes to be created on-demand.
+
+- To enable dynamic provisioning, a cluster administrator needs to pre-create one or more StorageClass objects for users.
+
+- StorageClass objects define which provisioner should be used and what parameters should be passed to that provisioner when dynamic provisioning is invoked. 
+
+* Using Dynamic Provisioning
+
+- Users request dynamically provisioned storage by including a storage class in their PersistentVolumeClaim.
+
+.code src/storage/12-pvc.yaml
+
+- This claim results in an SSD-like Persistent Disk being automatically provisioned. When the claim is deleted, the volume is destroyed.
+
+* Defaulting Behavior
+
+- Making sure that the DefaultStorageClass admission controller is enabled on the API server.
+
+- An administrator can mark a specific StorageClass as default by adding the storageclass.kubernetes.io/is-default-class annotation to it. 
+
